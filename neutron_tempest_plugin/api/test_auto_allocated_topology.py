@@ -30,7 +30,9 @@ class TestAutoAllocatedTopology(base.BaseAdminNetworkTest):
     # from other tests exercising this extension. So long as
     # all tests are added under TestAutoAllocatedTopology,
     # nothing bad should happen.
-    force_tenant_isolation = True
+    
+    # Changed to false due to ccloud domain limits
+    force_tenant_isolation = False
     required_extensions = [auto_allocated_topology.ALIAS]
 
     @classmethod

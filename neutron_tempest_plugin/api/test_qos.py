@@ -600,7 +600,8 @@ class QosBandwidthLimitRuleWithDirectionTestJSON(
 
 class RbacSharedQosPoliciesTest(base.BaseAdminNetworkTest):
 
-    force_tenant_isolation = True
+    # Changed to false due to ccloud domain limits
+    force_tenant_isolation = False
     credentials = ['primary', 'alt', 'admin']
     required_extensions = [qos_apidef.ALIAS]
 
