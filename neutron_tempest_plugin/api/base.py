@@ -1245,7 +1245,8 @@ class BaseSearchCriteriaTest(BaseNetworkTest):
     # same name
     resource_names = ('test1', 'abc1', 'test10', '123test') + ('test1',)
 
-    force_tenant_isolation = True
+    # Changed to false due to ccloud domain limits
+    force_tenant_isolation = False
 
     list_kwargs = {}
 
