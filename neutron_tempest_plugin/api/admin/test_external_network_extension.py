@@ -53,6 +53,21 @@ class ExternalNetworksRBACTestJSON(base.BaseAdminNetworkTest):
             external_gateway_info={'network_id': net['id']})['router']
         self.addCleanup(self.admin_client.delete_router, r['id'])
 
+    @decorators.idempotent_id('42d23734-c90e-4180-a2c1-9d7507ccfbc6')
+    def test_regular_client_shares_with_another_type_access_as_shared(self):
+        net = self.create_network(external=True)
+        self.client.create_rbac_policy(
+            object_type='network', object_id=net['id'],
+            action='access_as_shared',
+            target_tenant=self.client2.tenant_id)
+        body = self.client2.list_networks()
+        networks_list = [n['id'] for n in body['networks']]
+        self.assertIn(net['id'], networks_list)
+        r = self.client2.create_router(
+            data_utils.rand_name('router'),
+            external_gateway_info={'network_id': net['id']})['router']
+        self.addCleanup(self.admin_client.delete_router, r['id'])
+
     @decorators.idempotent_id('eff9443a-2d04-48ee-840e-d955ac564bcd')
     def test_regular_client_blocked_from_creating_external_wild_policies(self):
         net = self.create_network()
