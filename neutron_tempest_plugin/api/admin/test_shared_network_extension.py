@@ -171,6 +171,17 @@ class AllowedAddressPairSharedNetworkTest(base.BaseAdminNetworkTest):
             self.update_port(
                 port, allowed_address_pairs=self.allowed_address_pairs)
 
+    @decorators.idempotent_id('6eff0f06-706e-463c-ab65-f8090bb4533f')
+    def test_create_with_address_pair_blocked_on_other_network_ccloud_policy(self):
+        self.create_port(self.network,
+                        allowed_address_pairs=self.allowed_address_pairs)
+
+    @decorators.idempotent_id('2f599c07-6f46-45c7-b554-a20ba4809dfc')
+    def test_update_with_address_pair_blocked_on_other_network_ccloud_policy(self):
+        port = self.create_port(self.network)
+        self.update_port(
+            port, allowed_address_pairs=self.allowed_address_pairs)
+
 
 class RBACSharedNetworksTest(base.BaseAdminNetworkTest):
 
