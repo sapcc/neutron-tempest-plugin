@@ -10,8 +10,6 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-import re
-
 from tempest.common import utils
 from tempest.lib import decorators
 from tempest.lib import exceptions as lib_exc
