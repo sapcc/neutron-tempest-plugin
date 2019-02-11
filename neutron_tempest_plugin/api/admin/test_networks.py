@@ -25,6 +25,9 @@ class NetworksTestAdmin(base.BaseAdminNetworkTest):
     @decorators.idempotent_id('d3c76044-d067-4cb0-ae47-8cdd875c7f67')
     @utils.requires_ext(extension="project-id", service="network")
     def test_create_network_with_project(self):
+        # client.tenant_id is empty again, thus call a method and it works
+        self.client.list_extensions()
+
         project_id = self.client.tenant_id  # non-admin
 
         name = 'admin-created-with-project_id'
@@ -43,6 +46,9 @@ class NetworksTestAdmin(base.BaseAdminNetworkTest):
     @decorators.idempotent_id('8d21aaca-4364-4eb9-8b79-44b4fff6373b')
     @utils.requires_ext(extension="project-id", service="network")
     def test_create_network_with_project_and_tenant(self):
+        # client.tenant_id is empty again, thus call a method and it works
+        self.client.list_extensions()
+
         project_id = self.client.tenant_id  # non-admin
 
         name = 'created-with-project-and-tenant'
