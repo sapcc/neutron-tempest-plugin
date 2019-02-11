@@ -315,6 +315,11 @@ class RBACSharedNetworksTest(base.BaseAdminNetworkTest):
     @decorators.idempotent_id('bf5052b8-b11e-407c-8e43-113447404d3e')
     def test_filter_fields(self):
         net = self.create_network()
+        # Workaround: without next 2 lines the test fails because of BadRequest. Is client2 not initialized properly to
+        # access self.client2.tenant_id in the next line?
+        with testtools.ExpectedException(lib_exc.NotFound):
+            self.client2.show_network(net['id'])
+        # Workaround end
         self.client.create_rbac_policy(
             object_type='network', object_id=net['id'],
             action='access_as_shared', target_tenant=self.client2.tenant_id)
@@ -342,6 +347,11 @@ class RBACSharedNetworksTest(base.BaseAdminNetworkTest):
     @decorators.idempotent_id('e7bcb1ea-4877-4266-87bb-76f68b421f31')
     def test_filter_policies(self):
         net = self.create_network()
+        # Workaround: without next 2 lines the test fails because of BadRequest. Is client2 not initialized properly to
+        # access self.client2.tenant_id in the next line?
+        with testtools.ExpectedException(lib_exc.NotFound):
+            self.client2.show_network(net['id'])
+        # Workaround end
         pol1 = self.client.create_rbac_policy(
             object_type='network', object_id=net['id'],
             action='access_as_shared',
