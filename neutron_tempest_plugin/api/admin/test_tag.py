@@ -10,6 +10,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import re
+
 from tempest.common import utils
 from tempest.lib import decorators
 from tempest.lib import exceptions as lib_exc
@@ -18,7 +20,6 @@ from neutron_tempest_plugin.api import base
 
 
 class TagTestJSON(base.BaseAdminNetworkTest):
-
     required_extensions = ['standard-attr-tag']
 
     @classmethod
@@ -28,7 +29,8 @@ class TagTestJSON(base.BaseAdminNetworkTest):
 
     def _get_and_compare_tags(self, tags):
         res_body = self.client.get_tags(self.resource, self.res_id)
-        self.assertItemsEqual(tags, res_body['tags'])
+        # Filter out aci tenant id tag introduced by driver
+        self.assertItemsEqual(tags, [i for i in res_body['tags'] if not i.startswith("monsoon3::aci::tenant")])
 
     def _test_tag_operations(self):
         # create and get tags
@@ -470,7 +472,6 @@ class TagFilterTrunkTestJSON(TagFilterTestJSON):
 
 
 class UpdateTagsTest(base.BaseAdminNetworkTest):
-
     required_extensions = ['standard-attr-tag']
 
     def _get_and_compare_tags(self, tags, res_id):
