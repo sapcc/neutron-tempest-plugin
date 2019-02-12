@@ -121,7 +121,7 @@ class NetworksIpAvailabilityIPv4Test(NetworksIpAvailabilityTest):
         self.create_port(self.network)
         net_availability = self.admin_client.list_network_ip_availabilities()
         self._assert_total_and_used_ips(
-            used_ips_before_port_create + 1,
+            used_ips_before_port_create + 2,
             calc_total_ips(prefix, self._ip_version),
             self.network, net_availability)
 
@@ -198,7 +198,7 @@ class NetworksIpAvailabilityIPv4Test(NetworksIpAvailabilityTest):
         net_availability = self.admin_client.show_network_ip_availability(
             self.network['id'])
         self._assert_total_and_used_ips(
-            used_ips_before_port_create + 1,
+            used_ips_before_port_create + 2,
             calc_total_ips(prefix, self._ip_version),
             self.network,
             net_availability)
