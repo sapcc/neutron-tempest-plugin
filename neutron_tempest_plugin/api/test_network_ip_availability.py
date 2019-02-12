@@ -14,6 +14,7 @@
 #    under the License.
 
 import netaddr
+import time
 
 from tempest.common import utils
 from tempest.lib.common.utils import data_utils
@@ -118,6 +119,7 @@ class NetworksIpAvailabilityIPv4Test(NetworksIpAvailabilityTest):
         body = self.admin_client.list_network_ip_availabilities()
         used_ips_before_port_create = self._get_used_ips(self.network, body)
         self.create_port(self.network)
+        time.sleep(10)
         net_availability = self.admin_client.list_network_ip_availabilities()
         self._assert_total_and_used_ips(
             used_ips_before_port_create + 3,
@@ -194,6 +196,7 @@ class NetworksIpAvailabilityIPv4Test(NetworksIpAvailabilityTest):
         used_ips_before_port_create = self._get_used_ips(self.network,
                                                          net_availability)
         self.create_port(self.network)
+        time.sleep(10)
         net_availability = self.admin_client.show_network_ip_availability(
             self.network['id'])
         self._assert_total_and_used_ips(
