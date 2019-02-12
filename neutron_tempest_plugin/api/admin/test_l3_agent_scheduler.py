@@ -18,7 +18,7 @@ from tempest.lib import decorators
 from neutron_tempest_plugin.api import base
 from neutron_tempest_plugin import exceptions
 
-AGENT_TYPE = 'L3 agent'
+AGENT_TYPE = 'ASR1K L3 Agent'
 AGENT_MODES = (
     'legacy',
     'dvr_snat'
@@ -76,7 +76,7 @@ class L3AgentSchedulerTestJSON(base.BaseAdminNetworkTest):
         for agent in body['agents']:
             l3_agent_ids.append(agent['id'])
             self.assertIn('agent_type', agent)
-            self.assertEqual('L3 agent', agent['agent_type'])
+            self.assertEqual('ASR1K L3 Agent', agent['agent_type'])
         self.assertIn(self.agent['id'], l3_agent_ids)
         body = self.admin_client.remove_router_from_l3_agent(
             self.agent['id'],
