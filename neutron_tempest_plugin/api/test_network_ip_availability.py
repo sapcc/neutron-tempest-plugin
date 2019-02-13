@@ -33,8 +33,8 @@ DEFAULT_IP4_RESERVED = 3
 # broadcast address
 DEFAULT_IP6_RESERVED = 2
 
-DELETE_TIMEOUT = 10
-DELETE_SLEEP = 2
+DELETE_TIMEOUT = 60
+DELETE_SLEEP = 5
 
 
 class NetworksIpAvailabilityTest(base.BaseAdminNetworkTest):
@@ -119,9 +119,11 @@ class NetworksIpAvailabilityIPv4Test(NetworksIpAvailabilityTest):
         body = self.admin_client.list_network_ip_availabilities()
         used_ips_before_port_create = self._get_used_ips(self.network, body)
         self.create_port(self.network)
+        # wait some time
+        time.sleep(10)
         net_availability = self.admin_client.list_network_ip_availabilities()
         self._assert_total_and_used_ips(
-            used_ips_before_port_create + 1,
+            used_ips_before_port_create + 3,
             calc_total_ips(prefix, self._ip_version),
             self.network, net_availability)
 
@@ -195,10 +197,12 @@ class NetworksIpAvailabilityIPv4Test(NetworksIpAvailabilityTest):
         used_ips_before_port_create = self._get_used_ips(self.network,
                                                          net_availability)
         self.create_port(self.network)
+        # wait some time
+        time.sleep(10)
         net_availability = self.admin_client.show_network_ip_availability(
             self.network['id'])
         self._assert_total_and_used_ips(
-            used_ips_before_port_create + 1,
+            used_ips_before_port_create + 3,
             calc_total_ips(prefix, self._ip_version),
             self.network,
             net_availability)
