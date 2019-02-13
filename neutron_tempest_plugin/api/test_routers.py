@@ -165,9 +165,7 @@ class RoutersTest(base_routers.BaseRouterTest):
             return self.client.show_port(
                 intf['port_id'])['port']['status'] == 'ACTIVE'
 
-        utils.wait_until_true(_status_active, 900, 10,
-                              exception=WaitTimeout("New router interface port status "
-                                                    "did not became ACTIVE after %d seconds" % timeout))
+        utils.wait_until_true(_status_active, 900, 10, exception=AssertionError)
 
     @decorators.idempotent_id('c86ac3a8-50bd-4b00-a6b8-62af84a0765c')
     @tutils.requires_ext(extension='extraroute', service='network')
