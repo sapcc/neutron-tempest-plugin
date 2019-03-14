@@ -83,6 +83,7 @@ class TestAutoAllocatedTopology(base.BaseAdminNetworkTest):
 
     @decorators.idempotent_id('64bc0b02-cee4-11e5-9f3c-080027605a2b')
     def test_get_allocated_net_topology_as_tenant(self):
+        self.client.delete_auto_allocated_topology()
         resources_before = self._count_topology_resources()
         self.assertEqual((0, 0, 0), resources_before)
 
@@ -109,6 +110,7 @@ class TestAutoAllocatedTopology(base.BaseAdminNetworkTest):
 
     @decorators.idempotent_id('aabc0b02-cee4-11e5-9f3c-091127605a2b')
     def test_delete_allocated_net_topology_as_tenant(self):
+        self.client.delete_auto_allocated_topology()
         resources_before = self._count_topology_resources()
         self.assertEqual((0, 0, 0), resources_before)
         body = self.client.get_auto_allocated_topology()
