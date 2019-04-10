@@ -21,6 +21,10 @@ NeutronPluginOptions = [
     cfg.ListOpt('provider_vlans',
                 default=[],
                 help='List of provider networks available in the deployment.'),
+    cfg.IntOpt('provider_net_base_segm_id',
+               default=3000,
+               help='Base segmentation ID to create provider networks. '
+                    'This value will be increased in case of conflict.'),
     cfg.BoolOpt('specify_floating_ip_address_available',
                 default=True,
                 help='Allow passing an IP Address of the floating ip when '
@@ -53,6 +57,9 @@ NeutronPluginOptions = [
                     '"mtu":<MTU> - integer '
                     '"cidr"<SUBNET/MASK> - string '
                     '"provider:segmentation_id":<VLAN_ID> - integer'),
+    cfg.IntOpt('max_mtu',
+               default=1500,
+               help='Max mtu value of default deployments".'),
     cfg.StrOpt('q_agent',
                default=None,
                choices=['None', 'linuxbridge', 'ovs', 'sriov'],

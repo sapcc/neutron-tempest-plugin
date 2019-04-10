@@ -45,7 +45,9 @@
         - net-mtu-writable
         - network-ip-availability
         - network_availability_zone
+        - network-segment-range
         - pagination
+        - port-resource-request
         - port-mac-address-regenerate
         - port-security
         - port-security-groups-filtering
@@ -57,6 +59,7 @@
         - quotas
         - quota_details
         - rbac-policies
+        - rbac-security-groups
         - router
         - router_availability_zone
         - security-group
@@ -76,11 +79,12 @@
         - dvr
       devstack_localrc:
         USE_PYTHON3: true
-        TEMPEST_PLUGINS: /opt/stack/neutron-tempest-plugin
         NETWORK_API_EXTENSIONS: "{{ (network_api_extensions_common + network_api_extensions_tempest) | join(',') }}"
       devstack_plugins:
-        neutron: git://git.openstack.org/openstack/neutron.git
-        neutron-tempest-plugin: git://git.openstack.org/openstack/neutron-tempest-plugin.git
+        neutron: https://git.openstack.org/openstack/neutron.git
+        neutron-tempest-plugin: https://git.openstack.org/openstack/neutron-tempest-plugin.git
+      tempest_plugins:
+        - neutron-tempest-plugin
       devstack_services:
         tls-proxy: false
         tempest: true
@@ -89,6 +93,7 @@
         neutron-segments: true
         neutron-trunk: true
         neutron-uplink-status-propagation: true
+        neutron-network-segment-range: true
       devstack_local_conf:
         post-config:
           $NEUTRON_CONF:
@@ -127,6 +132,7 @@
               agent_availability_zone: nova
               image_is_advanced: true
               available_type_drivers: flat,geneve,vlan,gre,local,vxlan
+              provider_net_base_segm_id: 1
     irrelevant-files: &tempest-irrelevant-files
       - ^(test-|)requirements.txt$
       - ^releasenotes/.*$
@@ -220,6 +226,82 @@
       devstack_localrc:
         USE_PYTHON3: false
         NETWORK_API_EXTENSIONS: "{{ (network_api_extensions_common + network_api_extensions_tempest) | join(',') }}"
+        TEMPEST_PLUGINS: /opt/stack/neutron-tempest-plugin
+
+- job:
+    name: neutron-tempest-plugin-api-stein
+    parent: neutron-tempest-plugin-api
+    override-checkout: stable/stein
+    vars:
+      branch_override: stable/stein
+      # TODO(slaweq): find a way to put this list of extensions in
+      # neutron repository and keep it different per branch,
+      # then it could be removed from here
+      network_api_extensions_common: &api_extensions_stein
+        - address-scope
+        - agent
+        - allowed-address-pairs
+        - auto-allocated-topology
+        - availability_zone
+        - binding
+        - default-subnetpools
+        - dhcp_agent_scheduler
+        - dns-domain-ports
+        - dns-integration
+        - empty-string-filtering
+        - ext-gw-mode
+        - external-net
+        - extra_dhcp_opt
+        - extraroute
+        - filter-validation
+        - fip-port-details
+        - flavors
+        - floatingip-pools
+        - ip-substring-filtering
+        - l3-flavors
+        - l3-ha
+        - l3_agent_scheduler
+        - logging
+        - metering
+        - multi-provider
+        - net-mtu
+        - net-mtu-writable
+        - network-ip-availability
+        - network_availability_zone
+        - network-segment-range
+        - pagination
+        - port-resource-request
+        - port-mac-address-regenerate
+        - port-security
+        - port-security-groups-filtering
+        - project-id
+        - provider
+        - qos
+        - qos-bw-minimum-ingress
+        - qos-fip
+        - quotas
+        - quota_details
+        - rbac-policies
+        - rbac-security-groups
+        - router
+        - router_availability_zone
+        - security-group
+        - segment
+        - service-type
+        - sorting
+        - standard-attr-description
+        - standard-attr-revisions
+        - standard-attr-segment
+        - standard-attr-tag
+        - standard-attr-timestamp
+        - subnet_allocation
+        - trunk
+        - trunk-details
+        - uplink-status-propagation
+      network_api_extensions_tempest:
+        - dvr
+      devstack_localrc:
+        NETWORK_API_EXTENSIONS: "{{ (network_api_extensions_common + network_api_extensions_tempest) | join(',') }}"
 
 - job:
     name: neutron-tempest-plugin-api-rocky
@@ -290,6 +372,7 @@
       devstack_localrc:
         USE_PYTHON3: false
         NETWORK_API_EXTENSIONS: "{{ (network_api_extensions_common + network_api_extensions_tempest) | join(',') }}"
+        TEMPEST_PLUGINS: /opt/stack/neutron-tempest-plugin
 
 - job:
     name: neutron-tempest-plugin-scenario
@@ -350,6 +433,7 @@
       devstack_localrc:
         USE_PYTHON3: false
         NETWORK_API_EXTENSIONS: "{{ network_api_extensions | join(',') }}"
+        TEMPEST_PLUGINS: /opt/stack/neutron-tempest-plugin
       devstack_local_conf:
         test-config:
           # NOTE: ignores linux bridge's trunk delete on bound port test
@@ -370,6 +454,7 @@
       devstack_localrc:
         USE_PYTHON3: false
         NETWORK_API_EXTENSIONS: "{{ network_api_extensions | join(',') }}"
+        TEMPEST_PLUGINS: /opt/stack/neutron-tempest-plugin
       devstack_local_conf:
         test-config:
           # NOTE: ignores linux bridge's trunk delete on bound port test
@@ -378,6 +463,16 @@
           $TEMPEST_CONFIG:
             neutron_plugin_options:
               q_agent: None
+
+- job:
+    name: neutron-tempest-plugin-scenario-linuxbridge-stein
+    parent: neutron-tempest-plugin-scenario-linuxbridge
+    override-checkout: stable/stein
+    vars:
+      branch_override: stable/stein
+      network_api_extensions: *api_extensions_stein
+      devstack_localrc:
+        NETWORK_API_EXTENSIONS: "{{ network_api_extensions | join(',') }}"
 
 - job:
     name: neutron-tempest-plugin-dvr-multinode-scenario
@@ -402,7 +497,6 @@
         - dvr
       devstack_localrc:
         USE_PYTHON3: true
-        TEMPEST_PLUGINS: /opt/stack/neutron-tempest-plugin
         NETWORK_API_EXTENSIONS: "{{ (network_api_extensions_common + network_api_extensions_dvr) | join(',') }}"
         PHYSICAL_NETWORK: default
         DOWNLOAD_DEFAULT_IMAGES: false
@@ -413,8 +507,10 @@
         ADVANCED_INSTANCE_USER: ubuntu
         BUILD_TIMEOUT: 784
       devstack_plugins:
-        neutron: git://git.openstack.org/openstack/neutron.git
-        neutron-tempest-plugin: git://git.openstack.org/openstack/neutron-tempest-plugin.git
+        neutron: https://git.openstack.org/openstack/neutron.git
+        neutron-tempest-plugin: https://git.openstack.org/openstack/neutron-tempest-plugin.git
+      tempest_plugins:
+        - neutron-tempest-plugin
       devstack_services:
         tls-proxy: false
         tempest: true
@@ -517,6 +613,7 @@
       branch_override: stable/queens
       devstack_localrc:
         USE_PYTHON3: false
+        TEMPEST_PLUGINS: /opt/stack/neutron-tempest-plugin
 
 - job:
     name: neutron-tempest-plugin-dvr-multinode-scenario-rocky
@@ -527,6 +624,14 @@
       branch_override: stable/rocky
       devstack_localrc:
         USE_PYTHON3: false
+        TEMPEST_PLUGINS: /opt/stack/neutron-tempest-plugin
+
+- job:
+    name: neutron-tempest-plugin-dvr-multinode-scenario-stein
+    parent: neutron-tempest-plugin-dvr-multinode-scenario
+    override-checkout: stable/stein
+    vars:
+      branch_override: stable/stein
 
 - job:
     name: neutron-tempest-plugin-designate-scenario
@@ -539,7 +644,6 @@
     timeout: 3600
     vars:
       devstack_localrc:
-        TEMPEST_PLUGINS: '"/opt/stack/designate-tempest-plugin /opt/stack/neutron-tempest-plugin"'
         DESIGNATE_BACKEND_DRIVER: bind9
         DOWNLOAD_DEFAULT_IMAGES: false
         IMAGE_URLS: http://download.cirros-cloud.net/0.3.4/cirros-0.3.4-i386-disk.img,
@@ -547,10 +651,13 @@
         # empty
         ADVANCED_IMAGE_NAME: ""
       devstack_plugins:
-        designate: git://git.openstack.org/openstack/designate.git
+        designate: https://git.openstack.org/openstack/designate.git
       devstack_services:
         cinder: false
         designate: true
+      tempest_plugins:
+        - designate-tempest-plugin
+        - neutron-tempest-plugin
       tempest_test_regex: ^neutron_tempest_plugin\.scenario\.test_dns_integration
     irrelevant-files: *tempest-irrelevant-files
 
@@ -563,6 +670,7 @@
       branch_override: stable/queens
       devstack_localrc:
         USE_PYTHON3: false
+        TEMPEST_PLUGINS: '"/opt/stack/designate-tempest-plugin /opt/stack/neutron-tempest-plugin"'
 
 - job:
     name: neutron-tempest-plugin-designate-scenario-rocky
@@ -573,6 +681,14 @@
       branch_override: stable/rocky
       devstack_localrc:
         USE_PYTHON3: false
+        TEMPEST_PLUGINS: '"/opt/stack/designate-tempest-plugin /opt/stack/neutron-tempest-plugin"'
+
+- job:
+    name: neutron-tempest-plugin-designate-scenario-stein
+    parent: neutron-tempest-plugin-designate-scenario
+    override-checkout: stable/stein
+    vars:
+      branch_override: stable/stein
 
 - project-template:
     name: neutron-tempest-plugin-jobs
@@ -613,11 +729,24 @@
       jobs:
         - neutron-tempest-plugin-api-rocky
 
+- project-template:
+    name: neutron-tempest-plugin-jobs-stein
+    check:
+      jobs:
+        - neutron-tempest-plugin-api-stein
+        - neutron-tempest-plugin-designate-scenario-stein
+        - neutron-tempest-plugin-dvr-multinode-scenario-stein
+        - neutron-tempest-plugin-scenario-linuxbridge-stein
+    gate:
+      jobs:
+        - neutron-tempest-plugin-api-stein
+
 - project:
     templates:
       - neutron-tempest-plugin-jobs
       - neutron-tempest-plugin-jobs-queens
       - neutron-tempest-plugin-jobs-rocky
+      - neutron-tempest-plugin-jobs-stein
       - check-requirements
       - tempest-plugin-jobs
       - release-notes-jobs-python3
