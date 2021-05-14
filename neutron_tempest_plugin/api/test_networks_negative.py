@@ -42,4 +42,4 @@ class NetworksNegativeTest(base.BaseNetworkTest):
     def test_update_network_mtu(self):
         with testtools.ExpectedException(lib_exc.BadRequest):
             self.client.create_network(
-                mtu=CONF.neutron_plugin_options.max_mtu + 1)
+                mtu=CONF.neutron_plugin_options.max_mtu + 10000)

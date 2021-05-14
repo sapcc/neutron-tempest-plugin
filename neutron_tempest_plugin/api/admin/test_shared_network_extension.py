@@ -50,9 +50,25 @@ class SharedNetworksTest(base.BaseAdminNetworkTest):
         self.assertNotEmpty(items)
         self.assertTrue(all(n['shared'] == shared for n in items))
 
-    def _list_subnets_ids(self, client, shared):
-        body = client.list_subnets(shared=shared)
-        return [subnet['id'] for subnet in body['subnets']]
+    def _list_subnets_ids(self, client, shared, limit=500):
+        subnet_ids = []
+        marker = None
+        while True:
+            req = {
+                'shared': shared,
+                'fields': ['id'],
+                'limit': limit,
+            }
+            if marker:
+                req['marker'] = marker
+            res = client.list_subnets(**req)
+            ids = [s['id'] for s in res['subnets']]
+            if ids:
+                marker = ids[-1]
+                subnet_ids += ids
+            if len(ids) < limit:
+                break
+        return subnet_ids
 
     @decorators.idempotent_id('6661d219-b96d-4597-ad10-51672353421a')
     def test_filtering_shared_subnets(self):
