@@ -18,11 +18,22 @@
 
 """Utilities and helper functions."""
 
-import functools
 import threading
 import time
+try:
+    import urlparse
+except ImportError:
+    from urllib import parse as urlparse
 
 import eventlet
+
+from tempest.lib import exceptions
+
+
+SCHEMA_PORT_MAPPING = {
+    "http": 80,
+    "https": 443,
+}
 
 
 class classproperty(object):
@@ -74,22 +85,6 @@ def wait_until_true(predicate, timeout=60, sleep=1, exception=None):
         raise WaitTimeout("Timed out after %d seconds" % timeout)
 
 
-# TODO(haleyb): move to neutron-lib
-# code copied from neutron repository - neutron/tests/base.py
-def unstable_test(reason):
-    def decor(f):
-        @functools.wraps(f)
-        def inner(self, *args, **kwargs):
-            try:
-                return f(self, *args, **kwargs)
-            except Exception as e:
-                msg = ("%s was marked as unstable because of %s, "
-                       "failure was: %s") % (self.id(), reason, e)
-                raise self.skipTest(msg)
-        return inner
-    return decor
-
-
 def override_class(overriden_class, overrider_class):
     """Override class definition with a MixIn class
 
@@ -102,3 +97,113 @@ def override_class(overriden_class, overrider_class):
         bases = (overrider_class, overriden_class)
         overriden_class = type(name, bases, {})
     return overriden_class
+
+
+def normalize_url(url):
+    """Normalize url without port with schema default port
+
+    """
+    parse_result = urlparse.urlparse(url)
+    (scheme, netloc, url, params, query, fragment) = parse_result
+    port = parse_result.port
+    if scheme in SCHEMA_PORT_MAPPING and not port:
+        netloc = netloc + ":" + str(SCHEMA_PORT_MAPPING[scheme])
+    return urlparse.urlunparse((scheme, netloc, url, params, query, fragment))
+
+
+def kill_nc_process(ssh_client):
+    cmd = "killall -q nc"
+    try:
+        ssh_client.exec_command(cmd)
+    except exceptions.SSHExecCommandFailed:
+        pass
+
+
+def process_is_running(ssh_client, process_name):
+    try:
+        ssh_client.exec_command("pidof %s" % process_name)
+        return True
+    except exceptions.SSHExecCommandFailed:
+        return False
+
+
+def spawn_http_server(ssh_client, port, message):
+    cmd = ("(echo -e 'HTTP/1.1 200 OK\r\n'; echo '%(msg)s') "
+           "| sudo nc -lp %(port)d &" % {'msg': message, 'port': port})
+    ssh_client.exec_command(cmd)
+
+
+def call_url_remote(ssh_client, url):
+    cmd = "curl %s --retry 3 --connect-timeout 2" % url
+    return ssh_client.exec_command(cmd)
+
+
+class StatefulConnection:
+    """Class to test connection that should remain opened
+
+    Can be used to perform some actions while the initiated connection
+    remain opened
+    """
+
+    def __init__(self, client_ssh, server_ssh, target_ip, target_port):
+        self.client_ssh = client_ssh
+        self.server_ssh = server_ssh
+        self.ip = target_ip
+        self.port = target_port
+        self.connection_started = False
+        self.test_attempt = 0
+
+    def __enter__(self):
+        return self
+
+    @property
+    def test_str(self):
+        return 'attempt_{}'.format(str(self.test_attempt).zfill(3))
+
+    def _start_connection(self):
+        self.server_ssh.exec_command(
+                'echo "{}" > input.txt'.format(self.test_str))
+        self.server_ssh.exec_command('tail -f input.txt | nc -lp '
+                '{} &> output.txt &'.format(self.port))
+        self.client_ssh.exec_command(
+                'echo "{}" > input.txt'.format(self.test_str))
+        self.client_ssh.exec_command('tail -f input.txt | nc {} {} &>'
+                'output.txt &'.format(self.ip, self.port))
+
+    def _test_connection(self):
+        if not self.connection_started:
+            self._start_connection()
+        else:
+            self.server_ssh.exec_command(
+                    'echo "{}" >> input.txt'.format(self.test_str))
+            self.client_ssh.exec_command(
+                    'echo "{}" >> input.txt & sleep 1'.format(self.test_str))
+        try:
+            self.server_ssh.exec_command(
+                    'grep {} output.txt'.format(self.test_str))
+            self.client_ssh.exec_command(
+                    'grep {} output.txt'.format(self.test_str))
+            if not self.should_pass:
+                return False
+            else:
+                if not self.connection_started:
+                    self.connection_started = True
+                return True
+        except exceptions.SSHExecCommandFailed:
+            if self.should_pass:
+                return False
+            else:
+                return True
+        finally:
+            self.test_attempt += 1
+
+    def test_connection(self, should_pass=True, timeout=10, sleep_timer=1):
+        self.should_pass = should_pass
+        wait_until_true(
+                self._test_connection, timeout=timeout, sleep=sleep_timer)
+
+    def __exit__(self, type, value, traceback):
+        self.server_ssh.exec_command('sudo killall nc || killall nc')
+        self.server_ssh.exec_command('sudo killall tail || killall tail')
+        self.client_ssh.exec_command('sudo killall nc || killall nc')
+        self.client_ssh.exec_command('sudo killall tail || killall tail')

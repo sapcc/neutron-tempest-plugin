@@ -11,9 +11,9 @@
 #    under the License.
 
 import time
+from urllib import parse as urlparse
 
 from oslo_serialization import jsonutils
-from six.moves.urllib import parse as urlparse
 from tempest.lib.common import rest_client as service_client
 from tempest.lib import exceptions as lib_exc
 
@@ -224,6 +224,23 @@ class NetworkClientJSON(service_client.RestClient):
         subnetpool_uri = '%s/%s' % (uri, id)
         resp, body = self.put(subnetpool_uri, body)
         body = {'subnetpool': self.deserialize_list(body)}
+        self.expected_success(200, resp.status)
+        return service_client.ResponseBody(resp, body)
+
+    def add_subnetpool_prefix(self, id, **kwargs):
+        return self._subnetpool_prefix_operation(id, 'add_prefixes', kwargs)
+
+    def remove_subnetpool_prefix(self, id, **kwargs):
+        return self._subnetpool_prefix_operation(id,
+                                                 'remove_prefixes',
+                                                 kwargs)
+
+    def _subnetpool_prefix_operation(self, id, operation, op_body):
+        uri = self.get_uri("subnetpools")
+        op_prefix_uri = '%s/%s/%s' % (uri, id, operation)
+        body = jsonutils.dumps(op_body)
+        resp, body = self.put(op_prefix_uri, body)
+        body = jsonutils.loads(body)
         self.expected_success(200, resp.status)
         return service_client.ResponseBody(resp, body)
 
@@ -547,6 +564,22 @@ class NetworkClientJSON(service_client.RestClient):
         body = jsonutils.loads(body)
         return service_client.ResponseBody(resp, body)
 
+    def add_extra_routes_atomic(self, router_id, routes):
+        uri = '%s/routers/%s/add_extraroutes' % (self.uri_prefix, router_id)
+        request_body = {'router': {'routes': routes}}
+        resp, response_body = self.put(uri, jsonutils.dumps(request_body))
+        self.expected_success(200, resp.status)
+        return service_client.ResponseBody(
+            resp, jsonutils.loads(response_body))
+
+    def remove_extra_routes_atomic(self, router_id, routes):
+        uri = '%s/routers/%s/remove_extraroutes' % (self.uri_prefix, router_id)
+        request_body = {'router': {'routes': routes}}
+        resp, response_body = self.put(uri, jsonutils.dumps(request_body))
+        self.expected_success(200, resp.status)
+        return service_client.ResponseBody(
+            resp, jsonutils.loads(response_body))
+
     def add_dhcp_agent_to_network(self, agent_id, network_id):
         post_body = {'network_id': network_id}
         body = jsonutils.dumps(post_body)
@@ -568,7 +601,7 @@ class NetworkClientJSON(service_client.RestClient):
         return service_client.ResponseBody(resp, body)
 
     def create_qos_policy(self, name, description=None, shared=False,
-                          tenant_id=None, is_default=False):
+                          project_id=None, is_default=False):
         uri = '%s/qos/policies' % self.uri_prefix
         post_data = {
             'policy': {
@@ -579,8 +612,8 @@ class NetworkClientJSON(service_client.RestClient):
         }
         if description is not None:
             post_data['policy']['description'] = description
-        if tenant_id is not None:
-            post_data['policy']['tenant_id'] = tenant_id
+        if project_id is not None:
+            post_data['policy']['project_id'] = project_id
         resp, body = self.post(uri, self.serialize(post_data))
         body = self.deserialize_single(body)
         self.expected_success(201, resp.status)
@@ -860,6 +893,15 @@ class NetworkClientJSON(service_client.RestClient):
         self.expected_success(204, resp.status)
         return service_client.ResponseBody(resp, body)
 
+    def list_security_group_rules(self, **kwargs):
+        uri = '%s/security-group-rules' % self.uri_prefix
+        if kwargs:
+            uri += '?' + urlparse.urlencode(kwargs, doseq=1)
+        resp, body = self.get(uri)
+        self.expected_success(200, resp.status)
+        body = jsonutils.loads(body)
+        return service_client.ResponseBody(resp, body)
+
     def create_security_group_rule(self, direction, security_group_id,
                                    **kwargs):
         post_body = {'security_group_rule': kwargs}
@@ -881,8 +923,6 @@ class NetworkClientJSON(service_client.RestClient):
         return service_client.ResponseBody(resp, body)
 
     def list_security_groups(self, **kwargs):
-        post_body = {'security_groups': kwargs}
-        body = jsonutils.dumps(post_body)
         uri = '%s/security-groups' % self.uri_prefix
         if kwargs:
             uri += '?' + urlparse.urlencode(kwargs, doseq=1)
@@ -899,9 +939,16 @@ class NetworkClientJSON(service_client.RestClient):
         return service_client.ResponseBody(resp, body)
 
     def list_ports(self, **kwargs):
-        post_body = {'ports': kwargs}
-        body = jsonutils.dumps(post_body)
         uri = '%s/ports' % self.uri_prefix
+        if kwargs:
+            uri += '?' + urlparse.urlencode(kwargs, doseq=1)
+        resp, body = self.get(uri)
+        self.expected_success(200, resp.status)
+        body = jsonutils.loads(body)
+        return service_client.ResponseBody(resp, body)
+
+    def list_floatingips(self, **kwargs):
+        uri = '%s/floatingips' % self.uri_prefix
         if kwargs:
             uri += '?' + urlparse.urlencode(kwargs, doseq=1)
         resp, body = self.get(uri)
@@ -938,20 +985,97 @@ class NetworkClientJSON(service_client.RestClient):
         body = jsonutils.loads(resp_body)
         return service_client.ResponseBody(put_resp, body)
 
-    def create_network_keystone_v3(self, name, project_id, tenant_id=None):
-        uri = '%s/networks' % self.uri_prefix
-        post_data = {
-            'network': {
-                'name': name,
-                'project_id': project_id
-            }
-        }
-        if tenant_id is not None:
-            post_data['network']['tenant_id'] = tenant_id
-        resp, body = self.post(uri, self.serialize(post_data))
-        body = self.deserialize_single(body)
+    def create_port_forwarding(self, fip_id, internal_port_id,
+                               internal_port, external_port,
+                               internal_ip_address=None, protocol='tcp'):
+        post_body = {'port_forwarding': {
+            'protocol': protocol,
+            'internal_port_id': internal_port_id,
+            'internal_port': int(internal_port),
+            'external_port': int(external_port)}}
+        if internal_ip_address:
+            post_body['port_forwarding']['internal_ip_address'] = (
+                internal_ip_address)
+        body = jsonutils.dumps(post_body)
+        uri = '%s/floatingips/%s/port_forwardings' % (self.uri_prefix, fip_id)
+        resp, body = self.post(uri, body)
         self.expected_success(201, resp.status)
+        body = jsonutils.loads(body)
         return service_client.ResponseBody(resp, body)
+
+    def get_port_forwarding(self, fip_id, pf_id):
+        uri = '%s/floatingips/%s/port_forwardings/%s' % (self.uri_prefix,
+                                                         fip_id, pf_id)
+        get_resp, get_resp_body = self.get(uri)
+        self.expected_success(200, get_resp.status)
+        body = jsonutils.loads(get_resp_body)
+        return service_client.ResponseBody(get_resp, body)
+
+    def list_port_forwardings(self, fip_id):
+        uri = '%s/floatingips/%s/port_forwardings' % (self.uri_prefix, fip_id)
+        resp, body = self.get(uri)
+        self.expected_success(200, resp.status)
+        body = jsonutils.loads(body)
+        return service_client.ResponseBody(resp, body)
+
+    def update_port_forwarding(self, fip_id, pf_id, **kwargs):
+        uri = '%s/floatingips/%s/port_forwardings/%s' % (self.uri_prefix,
+                                                         fip_id, pf_id)
+        put_body = jsonutils.dumps({'port_forwarding': kwargs})
+        put_resp, resp_body = self.put(uri, put_body)
+        self.expected_success(200, put_resp.status)
+        body = jsonutils.loads(resp_body)
+        return service_client.ResponseBody(put_resp, body)
+
+    def delete_port_forwarding(self, fip_id, pf_id):
+        uri = '%s/floatingips/%s/port_forwardings/%s' % (self.uri_prefix,
+                                                         fip_id, pf_id)
+        resp, body = self.delete(uri)
+        self.expected_success(204, resp.status)
+        service_client.ResponseBody(resp, body)
+
+    def create_conntrack_helper(self, router_id, helper, protocol, port):
+        post_body = {'conntrack_helper': {
+            'helper': helper,
+            'protocol': protocol,
+            'port': port}}
+        body = jsonutils.dumps(post_body)
+        uri = '%s/routers/%s/conntrack_helpers' % (self.uri_prefix, router_id)
+        resp, body = self.post(uri, body)
+        self.expected_success(201, resp.status)
+        body = jsonutils.loads(body)
+        return service_client.ResponseBody(resp, body)
+
+    def get_conntrack_helper(self, router_id, cth_id):
+        uri = '%s/routers/%s/conntrack_helpers/%s' % (self.uri_prefix,
+                                                      router_id, cth_id)
+        get_resp, get_resp_body = self.get(uri)
+        self.expected_success(200, get_resp.status)
+        body = jsonutils.loads(get_resp_body)
+        return service_client.ResponseBody(get_resp, body)
+
+    def list_conntrack_helpers(self, router_id):
+        uri = '%s/routers/%s/conntrack_helpers' % (self.uri_prefix, router_id)
+        resp, body = self.get(uri)
+        self.expected_success(200, resp.status)
+        body = jsonutils.loads(body)
+        return service_client.ResponseBody(resp, body)
+
+    def update_conntrack_helper(self, router_id, cth_id, **kwargs):
+        uri = '%s/routers/%s/conntrack_helpers/%s' % (self.uri_prefix,
+                                                      router_id, cth_id)
+        put_body = jsonutils.dumps({'conntrack_helper': kwargs})
+        put_resp, resp_body = self.put(uri, put_body)
+        self.expected_success(200, put_resp.status)
+        body = jsonutils.loads(resp_body)
+        return service_client.ResponseBody(put_resp, body)
+
+    def delete_conntrack_helper(self, router_id, cth_id):
+        uri = '%s/routers/%s/conntrack_helpers/%s' % (self.uri_prefix,
+                                                      router_id, cth_id)
+        resp, body = self.delete(uri)
+        self.expected_success(204, resp.status)
+        service_client.ResponseBody(resp, body)
 
     def list_extensions(self, **filters):
         uri = self.get_uri("extensions")

@@ -17,6 +17,7 @@ import time
 
 from neutron_lib import constants as lib_constants
 from neutron_lib.services.qos import constants as qos_consts
+from neutron_lib.utils import test
 from tempest.common import utils
 from tempest.common import waiters
 from tempest.lib.common.utils import data_utils
@@ -24,6 +25,7 @@ from tempest.lib import decorators
 from tempest.lib import exceptions
 import testscenarios
 from testscenarios.scenarios import multiply_scenarios
+import testtools
 
 from neutron_tempest_plugin.api import base as base_api
 from neutron_tempest_plugin.common import ssh
@@ -133,10 +135,12 @@ class FloatingIpTestCasesMixin(object):
 
         # Check connectivity
         self.check_remote_connectivity(ssh_client,
-            dest_server['port']['fixed_ips'][0]['ip_address'])
+            dest_server['port']['fixed_ips'][0]['ip_address'],
+            servers=[src_server, dest_server])
         if self.dest_has_fip:
             self.check_remote_connectivity(ssh_client,
-                dest_server['fip']['floating_ip_address'])
+                dest_server['fip']['floating_ip_address'],
+                servers=[src_server, dest_server])
 
 
 class FloatingIpSameNetwork(FloatingIpTestCasesMixin,
@@ -151,7 +155,7 @@ class FloatingIpSameNetwork(FloatingIpTestCasesMixin,
 
     same_network = True
 
-    @common_utils.unstable_test("bug 1717302")
+    @test.unstable_test("bug 1717302")
     @decorators.idempotent_id('05c4e3b3-7319-4052-90ad-e8916436c23b')
     def test_east_west(self):
         self._test_east_west()
@@ -169,7 +173,7 @@ class FloatingIpSeparateNetwork(FloatingIpTestCasesMixin,
 
     same_network = False
 
-    @common_utils.unstable_test("bug 1717302")
+    @test.unstable_test("bug 1717302")
     @decorators.idempotent_id('f18f0090-3289-4783-b956-a0f8ac511e8b')
     def test_east_west(self):
         self._test_east_west()
@@ -199,7 +203,8 @@ class DefaultSnatToExternal(FloatingIpTestCasesMixin,
                                 pkey=self.keypair['private_key'],
                                 proxy_client=proxy_client)
         self.check_remote_connectivity(ssh_client,
-                                       gateway_external_ip)
+                                       gateway_external_ip,
+                                       servers=[proxy, src_server])
 
 
 class FloatingIPPortDetailsTest(FloatingIpTestCasesMixin,
@@ -212,7 +217,6 @@ class FloatingIPPortDetailsTest(FloatingIpTestCasesMixin,
     def resource_setup(cls):
         super(FloatingIPPortDetailsTest, cls).resource_setup()
 
-    @common_utils.unstable_test("bug 1815585")
     @decorators.idempotent_id('a663aeee-dd81-492b-a207-354fd6284dbe')
     def test_floatingip_port_details(self):
         """Tests the following:
@@ -336,6 +340,11 @@ class FloatingIPQosTest(FloatingIpTestCasesMixin,
     def resource_setup(cls):
         super(FloatingIPQosTest, cls).resource_setup()
 
+    @classmethod
+    def setup_clients(cls):
+        super(FloatingIPQosTest, cls).setup_clients()
+        cls.admin_client = cls.os_admin.network_client
+
     @decorators.idempotent_id('5eb48aea-eaba-4c20-8a6f-7740070a0aa3')
     def test_qos(self):
         """Test floating IP is binding to a QoS policy with
@@ -346,9 +355,15 @@ class FloatingIPQosTest(FloatingIpTestCasesMixin,
            received / elapsed time.
         """
 
+        self.skip_if_no_extension_enabled_in_l3_agents("fip_qos")
+
         self._test_basic_resources()
+
+        # Create a new QoS policy
         policy_id = self._create_qos_policy()
         ssh_client = self._create_ssh_client()
+
+        # As admin user create a new QoS rules
         self.os_admin.network_client.create_bandwidth_limit_rule(
             policy_id, max_kbps=constants.LIMIT_KILO_BITS_PER_SECOND,
             max_burst_kbps=constants.LIMIT_KILO_BYTES,
@@ -366,6 +381,7 @@ class FloatingIPQosTest(FloatingIpTestCasesMixin,
             self.fip['id'])['floatingip']
         self.assertEqual(self.port['id'], fip['port_id'])
 
+        # Associate QoS to the FIP
         self.os_admin.network_client.update_floatingip(
             self.fip['id'],
             qos_policy_id=policy_id)
@@ -374,10 +390,222 @@ class FloatingIPQosTest(FloatingIpTestCasesMixin,
             self.fip['id'])['floatingip']
         self.assertEqual(policy_id, fip['qos_policy_id'])
 
-        self._create_file_for_bw_tests(ssh_client)
+        # Basic test, Check that actual BW while downloading file
+        # is as expected (Original BW)
         common_utils.wait_until_true(lambda: self._check_bw(
             ssh_client,
             self.fip['floating_ip_address'],
             port=self.NC_PORT),
             timeout=120,
-            sleep=1)
+            sleep=1,
+            exception=RuntimeError(
+                'Failed scenario: "Create a QoS policy associated with FIP" '
+                'Actual BW is not as expected!'))
+
+        # As admin user update QoS rules
+        for rule in rules['bandwidth_limit_rules']:
+            self.os_admin.network_client.update_bandwidth_limit_rule(
+                policy_id,
+                rule['id'],
+                max_kbps=constants.LIMIT_KILO_BITS_PER_SECOND * 2,
+                max_burst_kbps=constants.LIMIT_KILO_BITS_PER_SECOND * 2)
+
+        # Check that actual BW while downloading file
+        # is as expected (Update BW)
+        common_utils.wait_until_true(lambda: self._check_bw(
+            ssh_client,
+            self.fip['floating_ip_address'],
+            port=self.NC_PORT,
+            expected_bw=test_qos.QoSTestMixin.LIMIT_BYTES_SEC * 2),
+            timeout=120,
+            sleep=1,
+            exception=RuntimeError(
+                'Failed scenario: "Update QoS policy associated with FIP" '
+                'Actual BW is not as expected!'))
+
+
+class TestFloatingIPUpdate(FloatingIpTestCasesMixin,
+                           base.BaseTempestTestCase):
+
+    same_network = None
+
+    @decorators.idempotent_id('1bdd849b-03dd-4b8f-994f-457cf8a36f93')
+    def test_floating_ip_update(self):
+        """Test updating FIP with another port.
+
+        The test creates two servers and attaches floating ip to first server.
+        Then it checks server is accesible using the FIP. FIP is then
+        associated with the second server and connectivity is checked again.
+        """
+        ports = [self.create_port(
+            self.network, security_groups=[self.secgroup['id']])
+            for i in range(2)]
+
+        servers = []
+        for port in ports:
+            name = data_utils.rand_name("server-%s" % port['id'][:8])
+            server = self.create_server(
+                name=name,
+                flavor_ref=CONF.compute.flavor_ref,
+                key_name=self.keypair['name'],
+                image_ref=CONF.compute.image_ref,
+                networks=[{'port': port['id']}])['server']
+            server['name'] = name
+            servers.append(server)
+        for server in servers:
+            self.wait_for_server_active(server)
+            self.wait_for_guest_os_ready(server)
+
+        self.fip = self.create_floatingip(port=ports[0])
+        self.check_connectivity(self.fip['floating_ip_address'],
+                                CONF.validation.image_ssh_user,
+                                self.keypair['private_key'],
+                                servers=servers)
+        self.client.update_floatingip(self.fip['id'], port_id=ports[1]['id'])
+
+        def _wait_for_fip_associated():
+            try:
+                self.check_servers_hostnames(servers[-1:], log_errors=False)
+            except (AssertionError, exceptions.SSHTimeout):
+                return False
+            return True
+
+        # The FIP is now associated with the port of the second server.
+        try:
+            common_utils.wait_until_true(_wait_for_fip_associated, sleep=3)
+        except common_utils.WaitTimeout:
+            self._log_console_output(servers[-1:])
+            self.fail(
+                "Server %s is not accessible via its floating ip %s" % (
+                    servers[-1]['id'], self.fip['id']))
+
+
+class FloatingIpMultipleRoutersTest(base.BaseTempestTestCase):
+    credentials = ['primary', 'admin']
+
+    @classmethod
+    @utils.requires_ext(extension="router", service="network")
+    def skip_checks(cls):
+        super(FloatingIpMultipleRoutersTest, cls).skip_checks()
+
+    def _create_keypair_and_secgroup(self):
+        self.keypair = self.create_keypair()
+        self.secgroup = self.create_security_group()
+        self.create_loginable_secgroup_rule(
+            secgroup_id=self.secgroup['id'])
+        self.create_pingable_secgroup_rule(
+            secgroup_id=self.secgroup['id'])
+
+    def _delete_floating_ip(self, fip_address):
+        ip_address = fip_address['floating_ip_address']
+
+        def _fip_is_free():
+            fips = self.os_admin.network_client.list_floatingips()
+            for fip in fips['floatingips']:
+                if ip_address == fip['floating_ip_address']:
+                    return False
+            return True
+
+        self.delete_floatingip(fip_address)
+        try:
+            common_utils.wait_until_true(_fip_is_free, timeout=30, sleep=5)
+        except common_utils.WaitTimeout:
+            self.fail("Can't reuse IP address %s because it is not free" %
+                      ip_address)
+
+    def _create_network_and_servers(self, servers_num=1, fip_addresses=None,
+                                    delete_fip_ids=None):
+        delete_fip_ids = delete_fip_ids or []
+        if fip_addresses:
+            self.assertEqual(servers_num, len(fip_addresses),
+                             ('Number of specified fip addresses '
+                              'does not match the number of servers'))
+        network = self.create_network()
+        subnet = self.create_subnet(network)
+        router = self.create_router_by_client()
+        self.create_router_interface(router['id'], subnet['id'])
+
+        fips = []
+        for server in range(servers_num):
+            fip = fip_addresses[server] if fip_addresses else None
+            delete_fip = fip['id'] in delete_fip_ids if fip else False
+            fips.append(
+                self._create_server_and_fip(network=network,
+                                            fip_address=fip,
+                                            delete_fip_address=delete_fip))
+        return fips
+
+    def _create_server_and_fip(self, network, fip_address=None,
+                               delete_fip_address=False):
+        server = self.create_server(
+            flavor_ref=CONF.compute.flavor_ref,
+            image_ref=CONF.compute.image_ref,
+            key_name=self.keypair['name'],
+            networks=[{'uuid': network['id']}],
+            security_groups=[{'name': self.secgroup['name']}])
+        waiters.wait_for_server_status(self.os_primary.servers_client,
+                                       server['server']['id'],
+                                       constants.SERVER_STATUS_ACTIVE)
+        port = self.client.list_ports(
+            network_id=network['id'],
+            device_id=server['server']['id'])['ports'][0]
+
+        if fip_address:
+            if delete_fip_address:
+                self._delete_floating_ip(fip_address)
+            fip = self.create_floatingip(
+                floating_ip_address=fip_address['floating_ip_address'],
+                client=self.os_admin.network_client,
+                port=port)
+            self.addCleanup(
+                self.delete_floatingip, fip, self.os_admin.network_client)
+        else:
+            fip = self.create_floatingip(port=port)
+        return fip
+
+    def _check_fips_connectivity(self, mutable_fip, permanent_fip):
+        for fip in [mutable_fip, permanent_fip]:
+            fip['ssh_client'] = ssh.Client(fip['floating_ip_address'],
+                                           CONF.validation.image_ssh_user,
+                                           pkey=self.keypair['private_key'])
+        self.check_remote_connectivity(
+            permanent_fip['ssh_client'], mutable_fip['floating_ip_address'])
+        self.check_remote_connectivity(
+            mutable_fip['ssh_client'], permanent_fip['floating_ip_address'])
+
+    @testtools.skipUnless(CONF.network.public_network_id,
+                          'The public_network_id option must be specified.')
+    @decorators.idempotent_id('b0382ab3-3c86-4415-84e3-649a8b040dab')
+    def test_reuse_ip_address_with_other_fip_on_other_router(self):
+        """Reuse IP address by another floating IP on another router
+
+        Scenario:
+            1. Create and connect a router to the external network.
+            2. Create and connect an internal network to the router.
+            3. Create and connect 2 VMs to the internal network.
+            4. Create FIPs in the external network for the VMs.
+            5. Make sure that VM1 can ping VM2 FIP address.
+            6. Create and connect one more router to the external network.
+            7. Create and connect an internal network to the second router.
+            8. Create and connect a VM (VM3) to the internal network of
+               the second router.
+            9. Delete VM2 FIP but save IP address that it used. The FIP is
+               deleted just before the creation of the new IP to "reserve" the
+               IP address associated (see LP#1880976).
+            10. Create a FIP for the VM3 in the external network with
+               the same IP address that was used for VM2.
+            11. Make sure that now VM1 is able to reach VM3 using the FIP.
+
+        Note, the scenario passes only in case corresponding
+        ARP update was sent to the external network when reusing same IP
+        address for another FIP.
+        """
+
+        self._create_keypair_and_secgroup()
+        [mutable_fip, permanent_fip] = (
+            self._create_network_and_servers(servers_num=2))
+        self._check_fips_connectivity(mutable_fip, permanent_fip)
+        [mutable_fip] = self._create_network_and_servers(
+            servers_num=1, fip_addresses=[mutable_fip],
+            delete_fip_ids=[mutable_fip['id']])
+        self._check_fips_connectivity(mutable_fip, permanent_fip)

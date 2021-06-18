@@ -15,9 +15,12 @@
 
 import netaddr
 
+from neutron_lib import constants as const
+
 from tempest.common import utils as tutils
 from tempest.lib.common.utils import data_utils
 from tempest.lib import decorators
+from tempest.lib import exceptions as lib_exc
 
 from neutron_tempest_plugin.api import base
 from neutron_tempest_plugin.api import base_routers
@@ -73,12 +76,11 @@ class RoutersTest(base_routers.BaseRouterTest):
             external_gateway_info = {
                 'network_id': CONF.network.public_network_id,
                 'enable_snat': enable_snat}
-            create_body = self.admin_client.create_router(
-                name, external_gateway_info=external_gateway_info)
-            self.addCleanup(self.admin_client.delete_router,
-                            create_body['router']['id'])
+            router = self._create_admin_router(
+                name, external_network_id=CONF.network.public_network_id,
+                enable_snat=enable_snat)
             # Verify snat attributes after router creation
-            self._verify_router_gateway(create_body['router']['id'],
+            self._verify_router_gateway(router['id'],
                                         exp_ext_gw_info=external_gateway_info)
 
     def _verify_router_gateway(self, router_id, exp_ext_gw_info=None):
@@ -201,6 +203,71 @@ class RoutersTest(base_routers.BaseRouterTest):
     def _delete_extra_routes(self, router_id):
         self.client.delete_extra_routes(router_id)
 
+    @decorators.idempotent_id('b29d1698-d603-11e9-9c66-079cc4aec539')
+    @tutils.requires_ext(extension='extraroute-atomic', service='network')
+    def test_extra_routes_atomic(self):
+        self.network = self.create_network()
+        self.subnet = self.create_subnet(self.network)
+        self.router = self._create_router(
+            data_utils.rand_name('router-'), True)
+        self.create_router_interface(self.router['id'], self.subnet['id'])
+        self.addCleanup(
+            self._delete_extra_routes,
+            self.router['id'])
+
+        if self._ip_version == 6:
+            dst = '2001:db8:%s::/64'
+        else:
+            dst = '10.0.%s.0/24'
+
+        cidr = netaddr.IPNetwork(self.subnet['cidr'])
+
+        routes = [
+            {'destination': dst % 2, 'nexthop': cidr[2]},
+        ]
+        resp = self.client.add_extra_routes_atomic(
+            self.router['id'], routes)
+        self.assertEqual(1, len(resp['router']['routes']))
+
+        routes = [
+            {'destination': dst % 2, 'nexthop': cidr[2]},
+            {'destination': dst % 3, 'nexthop': cidr[3]},
+        ]
+        resp = self.client.add_extra_routes_atomic(
+            self.router['id'], routes)
+        self.assertEqual(2, len(resp['router']['routes']))
+
+        routes = [
+            {'destination': dst % 3, 'nexthop': cidr[3]},
+            {'destination': dst % 4, 'nexthop': cidr[4]},
+        ]
+        resp = self.client.remove_extra_routes_atomic(
+            self.router['id'], routes)
+        self.assertEqual(1, len(resp['router']['routes']))
+
+        routes = [
+            {'destination': dst % 2, 'nexthop': cidr[5]},
+        ]
+        resp = self.client.add_extra_routes_atomic(
+            self.router['id'], routes)
+        self.assertEqual(2, len(resp['router']['routes']))
+
+        routes = [
+            {'destination': dst % 2, 'nexthop': cidr[5]},
+        ]
+        resp = self.client.remove_extra_routes_atomic(
+            self.router['id'], routes)
+        self.assertEqual(1, len(resp['router']['routes']))
+
+        routes = [
+            {'destination': dst % 2, 'nexthop': cidr[2]},
+            {'destination': dst % 3, 'nexthop': cidr[3]},
+            {'destination': dst % 2, 'nexthop': cidr[5]},
+        ]
+        resp = self.client.remove_extra_routes_atomic(
+            self.router['id'], routes)
+        self.assertEqual(0, len(resp['router']['routes']))
+
     @decorators.idempotent_id('01f185d1-d1a6-4cf9-abf7-e0e1384c169c')
     def test_network_attached_with_two_routers(self):
         network = self.create_network(data_utils.rand_name('network1'))
@@ -238,12 +305,8 @@ class DvrRoutersTest(base_routers.BaseRouterTest):
     @decorators.idempotent_id('141297aa-3424-455d-aa8d-f2d95731e00a')
     def test_create_distributed_router(self):
         name = data_utils.rand_name('router')
-        create_body = self.admin_client.create_router(
-            name, distributed=True)
-        self.addCleanup(self._delete_router,
-                        create_body['router']['id'],
-                        self.admin_client)
-        self.assertTrue(create_body['router']['distributed'])
+        router = self._create_admin_router(name, distributed=True)
+        self.assertTrue(router['distributed'])
 
 
 class DvrRoutersTestToCentralized(base_routers.BaseRouterTest):
@@ -251,14 +314,13 @@ class DvrRoutersTestToCentralized(base_routers.BaseRouterTest):
     required_extensions = ['dvr', 'l3-ha']
 
     @decorators.idempotent_id('644d7a4a-01a1-4b68-bb8d-0c0042cb1729')
-    def test_convert_centralized_router(self):
+    def test_convert_distributed_router_back_to_centralized(self):
+        # Convert a centralized router to distributed firstly
         router_args = {'tenant_id': self.client.tenant_id,
                        'distributed': False, 'ha': False}
-        router = self.admin_client.create_router(
+        router = self._create_admin_router(
             data_utils.rand_name('router'), admin_state_up=False,
-            **router_args)['router']
-        self.addCleanup(self.admin_client.delete_router,
-                        router['id'])
+            **router_args)
         self.assertFalse(router['distributed'])
         self.assertFalse(router['ha'])
         update_body = self.admin_client.update_router(router['id'],
@@ -266,9 +328,69 @@ class DvrRoutersTestToCentralized(base_routers.BaseRouterTest):
         self.assertTrue(update_body['router']['distributed'])
         show_body = self.admin_client.show_router(router['id'])
         self.assertTrue(show_body['router']['distributed'])
+        self.assertFalse(show_body['router']['ha'])
+        # Then convert the distributed router back to centralized
+        update_body = self.admin_client.update_router(router['id'],
+                                                      distributed=False)
+        self.assertFalse(update_body['router']['distributed'])
+        show_body = self.admin_client.show_router(router['id'])
+        self.assertFalse(show_body['router']['distributed'])
+        self.assertFalse(show_body['router']['ha'])
         show_body = self.client.show_router(router['id'])
         self.assertNotIn('distributed', show_body['router'])
         self.assertNotIn('ha', show_body['router'])
+
+
+class DvrRoutersTestUpdateDistributedExtended(base_routers.BaseRouterTest):
+
+    required_extensions = ['dvr', 'l3-ha',
+                           'router-admin-state-down-before-update']
+
+    @decorators.idempotent_id('0ffb9973-0c1a-4b76-a1f2-060178057661')
+    def test_convert_centralized_router_to_distributed_extended(self):
+        router_args = {'tenant_id': self.client.tenant_id,
+                       'distributed': False, 'ha': False}
+        router = self._create_admin_router(
+            data_utils.rand_name('router'), admin_state_up=True,
+            **router_args)
+        self.assertTrue(router['admin_state_up'])
+        self.assertFalse(router['distributed'])
+        # take router down to allow setting the router to distributed
+        update_body = self.admin_client.update_router(router['id'],
+                                                      admin_state_up=False)
+        self.assertFalse(update_body['router']['admin_state_up'])
+        # set the router to distributed
+        update_body = self.admin_client.update_router(router['id'],
+                                                      distributed=True)
+        self.assertTrue(update_body['router']['distributed'])
+        # bring the router back up
+        update_body = self.admin_client.update_router(router['id'],
+                                                      admin_state_up=True)
+        self.assertTrue(update_body['router']['admin_state_up'])
+        self.assertTrue(update_body['router']['distributed'])
+
+    @decorators.idempotent_id('e9a8f55b-c535-44b7-8b0a-20af6a7c2921')
+    def test_convert_distributed_router_to_centralized_extended(self):
+        router_args = {'tenant_id': self.client.tenant_id,
+                       'distributed': True, 'ha': False}
+        router = self._create_admin_router(
+            data_utils.rand_name('router'), admin_state_up=True,
+            **router_args)
+        self.assertTrue(router['admin_state_up'])
+        self.assertTrue(router['distributed'])
+        # take router down to allow setting the router to centralized
+        update_body = self.admin_client.update_router(router['id'],
+                                                      admin_state_up=False)
+        self.assertFalse(update_body['router']['admin_state_up'])
+        # set router to centralized
+        update_body = self.admin_client.update_router(router['id'],
+                                                      distributed=False)
+        self.assertFalse(update_body['router']['distributed'])
+        # bring router back up
+        update_body = self.admin_client.update_router(router['id'],
+                                                      admin_state_up=True)
+        self.assertTrue(update_body['router']['admin_state_up'])
+        self.assertFalse(update_body['router']['distributed'])
 
 
 class HaRoutersTest(base_routers.BaseRouterTest):
@@ -334,3 +456,57 @@ class RoutersSearchCriteriaTest(base.BaseSearchCriteriaTest):
     @decorators.idempotent_id('fb102124-20f8-4cb3-8c81-f16f5e41d192')
     def test_list_no_pagination_limit_0(self):
         self._test_list_no_pagination_limit_0()
+
+
+class RoutersDeleteTest(base_routers.BaseRouterTest):
+    """The only test in this class is a test that removes router!
+
+    * We cannot delete common and mandatory resources (router in this case)
+    * using the existing classes, as it will cause failure in other tests
+    * running in parallel.
+    """
+    @classmethod
+    def resource_setup(cls):
+        super(RoutersDeleteTest, cls).resource_setup()
+        cls.secgroup = cls.create_security_group(
+            name=data_utils.rand_name("test_port_secgroup"))
+        router_kwargs = {
+            'router_name': data_utils.rand_name('router_to_delete'),
+            'external_network_id': CONF.network.public_network_id}
+        cls.router = cls.create_router(**router_kwargs)
+
+    @decorators.idempotent_id('dbbc5c74-63c8-11eb-8881-74e5f9e2a801')
+    def test_delete_router(self):
+        # Create a port on tenant network and associate to the router.
+        # Try to delete router. Expected result: "Conflict Error" is raised.
+        network = self.create_network()
+        subnet = self.create_subnet(network)
+        self.create_router_interface(self.router['id'], subnet['id'])
+        port = self.create_port(
+            network, name=data_utils.rand_name("port"),
+            security_groups=[self.secgroup['id']])
+        self.create_floatingip(port=port)
+        self.assertRaises(
+            lib_exc.Conflict, self.client.delete_router, self.router['id'])
+        # Delete the associated port
+        # Try to delete router. Expected result: "Conflict Error" is raised.
+        # Note: there are still interfaces in use.
+        self.client.delete_port(port['id'])
+        self.assertRaises(
+            lib_exc.Conflict, self.client.delete_router, self.router['id'])
+        # Delete the rest of the router's ports
+        # Try to delete router. Expected result: "PASS"
+        interfaces = [
+            port for port in self.client.list_router_interfaces(
+                self.router['id'])['ports']
+            if port['device_owner'] in const.ROUTER_INTERFACE_OWNERS]
+        for i in interfaces:
+            try:
+                self.assertRaises(
+                    lib_exc.Conflict, self.client.delete_router,
+                    self.router['id'])
+                self.client.remove_router_interface_with_subnet_id(
+                    self.router['id'], i['fixed_ips'][0]['subnet_id'])
+            except lib_exc.NotFound:
+                pass
+        self.client.delete_router(self.router['id'])

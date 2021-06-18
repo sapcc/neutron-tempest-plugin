@@ -24,6 +24,7 @@ CONF = config.CONF
 
 
 class InternalDNSTest(base.BaseTempestTestCase):
+    credentials = ['primary', 'admin']
 
     @utils.requires_ext(extension="dns-integration", service="network")
     @decorators.idempotent_id('988347de-07af-471a-abfa-65aea9f452a6')
@@ -35,7 +36,6 @@ class InternalDNSTest(base.BaseTempestTestCase):
           2.1) ping the other VM's internal IP
           2.2) ping the other VM's hostname
         """
-
         network = self.create_network(dns_domain='starwars.')
         self.setup_network_and_server(network=network, server_name='luke')
         self.create_pingable_secgroup_rule(
@@ -53,13 +53,14 @@ class InternalDNSTest(base.BaseTempestTestCase):
                 {'name': self.security_groups[-1]['name']}],
             name='leia')
         self.wait_for_server_active(leia['server'])
+        self.wait_for_guest_os_ready(leia['server'])
 
         ssh_client = ssh.Client(
             self.fip['floating_ip_address'],
             CONF.validation.image_ssh_user,
             pkey=self.keypair['private_key'])
 
-        self.assertIn('luke', ssh_client.exec_command('hostname'))
+        self.assertIn('luke', ssh_client.get_hostname())
 
         leia_port = self.client.list_ports(
             network_id=self.network['id'],
@@ -70,9 +71,14 @@ class InternalDNSTest(base.BaseTempestTestCase):
         # in very long boot times.
         self.check_remote_connectivity(
             ssh_client, leia_port['fixed_ips'][0]['ip_address'],
-            timeout=CONF.validation.ping_timeout * 10)
-        self.assertIn(
-            'starwars', ssh_client.exec_command('cat /etc/resolv.conf'))
+            timeout=CONF.validation.ping_timeout * 10,
+            servers=[self.server, leia])
 
-        self.check_remote_connectivity(ssh_client, 'leia')
-        self.check_remote_connectivity(ssh_client, 'leia.starwars')
+        resolv_conf = ssh_client.exec_command('cat /etc/resolv.conf')
+        self.assertIn('openstackgate.local', resolv_conf)
+        self.assertNotIn('starwars', resolv_conf)
+
+        self.check_remote_connectivity(ssh_client, 'leia',
+                                       servers=[self.server, leia])
+        self.check_remote_connectivity(ssh_client, 'leia.openstackgate.local',
+                                       servers=[self.server, leia])

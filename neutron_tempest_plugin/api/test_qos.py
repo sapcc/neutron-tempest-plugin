@@ -13,6 +13,7 @@
 #    under the License.
 
 from neutron_lib.api.definitions import qos as qos_apidef
+from neutron_lib import constants as n_constants
 from neutron_lib.services.qos import constants as qos_consts
 from tempest.common import utils
 from tempest.lib.common.utils import data_utils
@@ -23,9 +24,10 @@ import testscenarios
 import testtools
 
 from neutron_tempest_plugin.api import base
-
+from neutron_tempest_plugin import config
 
 load_tests = testscenarios.load_tests_apply_scenarios
+CONF = config.CONF
 
 
 class QosTestJSON(base.BaseAdminNetworkTest):
@@ -63,11 +65,8 @@ class QosTestJSON(base.BaseAdminNetworkTest):
         body = self.admin_client.show_qos_policy(policy['id'])
         show_policy = body['policy']
         self.assertIn('project_id', show_policy)
-        self.assertIn('tenant_id', show_policy)
         self.assertEqual(self.admin_client.tenant_id,
                          show_policy['project_id'])
-        self.assertEqual(self.admin_client.tenant_id,
-                         show_policy['tenant_id'])
 
     @decorators.idempotent_id('f8d20e92-f06d-4805-b54f-230f77715815')
     def test_list_policy_filter_by_name(self):
@@ -83,12 +82,39 @@ class QosTestJSON(base.BaseAdminNetworkTest):
         retrieved_policy = policies[0]
         self.assertEqual('test', retrieved_policy['name'])
 
+    @decorators.idempotent_id('dde0b449-a400-4a87-b5a5-4d1c413c917b')
+    def test_list_policy_sort_by_name(self):
+        policyA = 'A' + data_utils.rand_name("policy")
+        policyB = 'B' + data_utils.rand_name("policy")
+        self.create_qos_policy(name=policyA, description='test policy',
+                               shared=False)
+        self.create_qos_policy(name=policyB, description='test policy',
+                               shared=False)
+
+        param = {
+            'sort_key': 'name',
+            'sort_dir': 'asc'
+        }
+        policies = (self.admin_client.list_qos_policies(**param)['policies'])
+        policy_names = [p['name'] for p in policies]
+        self.assertLess(policy_names.index(policyA),
+                        policy_names.index(policyB))
+
+        param = {
+            'sort_key': 'name',
+            'sort_dir': 'desc'
+        }
+        policies = (self.admin_client.list_qos_policies(**param)['policies'])
+        policy_names = [p['name'] for p in policies]
+        self.assertLess(policy_names.index(policyB),
+                        policy_names.index(policyA))
+
     @decorators.idempotent_id('8e88a54b-f0b2-4b7d-b061-a15d93c2c7d6')
     def test_policy_update(self):
         policy = self.create_qos_policy(name='test-policy',
                                         description='',
                                         shared=False,
-                                        tenant_id=self.admin_client.tenant_id)
+                                        project_id=self.admin_client.tenant_id)
         self.admin_client.update_qos_policy(policy['id'],
                                             description='test policy desc2',
                                             shared=True)
@@ -104,7 +130,7 @@ class QosTestJSON(base.BaseAdminNetworkTest):
         policy = self.create_qos_policy(name='test-policy',
                                         description='',
                                         shared=False,
-                                        tenant_id=self.client.tenant_id)
+                                        project_id=self.client.tenant_id)
         self.assertRaises(
             exceptions.Forbidden,
             self.client.update_qos_policy,
@@ -115,7 +141,7 @@ class QosTestJSON(base.BaseAdminNetworkTest):
         policy = self.create_qos_policy(name='test-policy',
                                         description='',
                                         shared=False,
-                                        tenant_id=self.admin_client.tenant_id)
+                                        project_id=self.admin_client.tenant_id)
         self.assertRaises(
             exceptions.NotFound,
             self.client.update_qos_policy,
@@ -126,7 +152,7 @@ class QosTestJSON(base.BaseAdminNetworkTest):
         policy = self.create_qos_policy(name='test-policy',
                                         description='',
                                         shared=True,
-                                        tenant_id=self.admin_client.tenant_id)
+                                        project_id=self.admin_client.tenant_id)
 
         self.admin_client.update_qos_policy(policy['id'],
                                             description='test policy desc2')
@@ -349,7 +375,7 @@ class QosTestJSON(base.BaseAdminNetworkTest):
             name='test-policy-shared',
             description='shared policy',
             shared=True,
-            tenant_id=self.admin_client.tenant_id)
+            project_id=self.admin_client.tenant_id)
         obtained_policy = self.client.show_qos_policy(policy['id'])['policy']
         self.assertEqual(obtained_policy, policy)
 
@@ -364,7 +390,7 @@ class QosTestJSON(base.BaseAdminNetworkTest):
     def test_default_policy_creating_network_without_policy(self):
         project_id = self.create_project()['id']
         policy = self.create_qos_policy(name='test-policy',
-                                        tenant_id=project_id,
+                                        project_id=project_id,
                                         is_default=True)
         network = self.create_network('test network', client=self.admin_client,
                                       project_id=project_id)
@@ -376,10 +402,10 @@ class QosTestJSON(base.BaseAdminNetworkTest):
     def test_default_policy_creating_network_with_policy(self):
         project_id = self.create_project()['id']
         self.create_qos_policy(name='test-policy',
-                               tenant_id=project_id,
+                               project_id=project_id,
                                is_default=True)
         policy = self.create_qos_policy(name='test-policy',
-                                        tenant_id=project_id)
+                                        project_id=project_id)
         network = self.create_network('test network', client=self.admin_client,
                                       project_id=project_id,
                                       qos_policy_id=policy['id'])
@@ -391,7 +417,7 @@ class QosTestJSON(base.BaseAdminNetworkTest):
     def test_user_create_port_with_admin_qos_policy(self):
         qos_policy = self.create_qos_policy(
             name='test-policy',
-            tenant_id=self.admin_client.tenant_id,
+            project_id=self.admin_client.tenant_id,
             shared=False)
         network = self.create_network(
             'test network', client=self.admin_client,
@@ -534,7 +560,7 @@ class QosBandwidthLimitRuleTestJSON(base.BaseAdminNetworkTest):
         policy = self.create_qos_policy(name='test-policy',
                                         description='test policy',
                                         shared=False,
-                                        tenant_id=self.client.tenant_id)
+                                        project_id=self.client.tenant_id)
         rule = self.create_qos_bandwidth_limit_rule(policy_id=policy['id'],
                                                     max_kbps=1,
                                                     max_burst_kbps=1,
@@ -549,7 +575,7 @@ class QosBandwidthLimitRuleTestJSON(base.BaseAdminNetworkTest):
         policy = self.create_qos_policy(name='test-policy',
                                         description='test policy',
                                         shared=False,
-                                        tenant_id=self.admin_client.tenant_id)
+                                        project_id=self.admin_client.tenant_id)
         rule = self.create_qos_bandwidth_limit_rule(policy_id=policy['id'],
                                                     max_kbps=1,
                                                     max_burst_kbps=1,
@@ -584,10 +610,53 @@ class QosBandwidthLimitRuleTestJSON(base.BaseAdminNetworkTest):
         self.assertIn(rule1['id'], rules_ids)
         self.assertNotIn(rule2['id'], rules_ids)
 
+    @testtools.skipUnless(
+        CONF.neutron_plugin_options.create_shared_resources,
+        """Creation of shared resources should be allowed,
+        setting the create_shared_resources option as 'True' is needed""")
+    @decorators.idempotent_id('d911707e-fa2c-11e9-9553-5076af30bbf5')
+    def test_attach_and_detach_a_policy_by_a_tenant(self):
+        # As an admin create an non shared QoS policy,add a rule
+        # and associate it with a network
+        self.network = self.create_network()
+        policy = self.create_qos_policy(name='test-policy',
+                                        description='test policy for attach',
+                                        shared=False)
+
+        self.admin_client.create_bandwidth_limit_rule(
+            policy['id'], 1024, 1024)
+
+        self.admin_client.update_network(
+            self.network['id'], qos_policy_id=policy['id'])
+
+        # As a tenant, try to detach the policy from the network
+        # The operation should be forbidden
+        self.assertRaises(
+            exceptions.Forbidden,
+            self.client.update_network,
+            self.network['id'], qos_policy_id=None)
+
+        # As an admin, make the policy shared
+        self.admin_client.update_qos_policy(policy['id'], shared=True)
+
+        # As a tenant, try to detach the policy from the network
+        # The operation should be allowed
+        self.client.update_network(self.network['id'],
+                                   qos_policy_id=None)
+
+        retrieved_network = self.admin_client.show_network(self.network['id'])
+        self.assertIsNone(retrieved_network['network']['qos_policy_id'])
+
+        # As a tenant, try to delete the policy from the network
+        # should be forbidden
+        self.assertRaises(
+            exceptions.Forbidden,
+            self.client.delete_qos_policy,
+            policy['id'])
+
 
 class QosBandwidthLimitRuleWithDirectionTestJSON(
         QosBandwidthLimitRuleTestJSON):
-
     required_extensions = (
         QosBandwidthLimitRuleTestJSON.required_extensions +
         ['qos-bw-limit-direction']
@@ -596,6 +665,50 @@ class QosBandwidthLimitRuleWithDirectionTestJSON(
         ('ingress', {'direction': 'ingress'}),
         ('egress', {'direction': 'egress'}),
     ]
+
+    @classmethod
+    @base.require_qos_rule_type(qos_consts.RULE_TYPE_BANDWIDTH_LIMIT)
+    def resource_setup(cls):
+        super(QosBandwidthLimitRuleWithDirectionTestJSON, cls).resource_setup()
+
+    @decorators.idempotent_id('c8cbe502-0f7e-11ea-8d71-362b9e155667')
+    def test_create_policy_with_multiple_rules(self):
+        # Create a policy with multiple rules
+        policy = self.create_qos_policy(name='test-policy1',
+                                        description='test policy1',
+                                        shared=False)
+
+        rule1 = self.create_qos_bandwidth_limit_rule(policy_id=policy['id'],
+                                                     max_kbps=1024,
+                                                     max_burst_kbps=1024,
+                                                     direction=n_constants.
+                                                     EGRESS_DIRECTION)
+        rule2 = self.create_qos_bandwidth_limit_rule(policy_id=policy['id'],
+                                                     max_kbps=1024,
+                                                     max_burst_kbps=1024,
+                                                     direction=n_constants.
+                                                     INGRESS_DIRECTION)
+        # Check that the rules were added to the policy
+        rules = self.admin_client.list_bandwidth_limit_rules(
+            policy['id'])['bandwidth_limit_rules']
+        rules_ids = [rule['id'] for rule in rules]
+        self.assertIn(rule1['id'], rules_ids)
+        self.assertIn(rule2['id'], rules_ids)
+
+        # Check that the rules creation fails for the same rule types
+        self.assertRaises(exceptions.Conflict,
+                          self.create_qos_bandwidth_limit_rule,
+                          policy_id=policy['id'],
+                          max_kbps=1025,
+                          max_burst_kbps=1025,
+                          direction=n_constants.EGRESS_DIRECTION)
+
+        self.assertRaises(exceptions.Conflict,
+                          self.create_qos_bandwidth_limit_rule,
+                          policy_id=policy['id'],
+                          max_kbps=1025,
+                          max_burst_kbps=1025,
+                          direction=n_constants.INGRESS_DIRECTION)
 
 
 class RbacSharedQosPoliciesTest(base.BaseAdminNetworkTest):
@@ -610,23 +723,23 @@ class RbacSharedQosPoliciesTest(base.BaseAdminNetworkTest):
         super(RbacSharedQosPoliciesTest, cls).resource_setup()
         cls.client2 = cls.os_alt.network_client
 
-    def _create_qos_policy(self, tenant_id=None):
+    def _create_qos_policy(self, project_id=None):
         args = {'name': data_utils.rand_name('test-policy'),
                 'description': 'test policy',
                 'shared': False,
-                'tenant_id': tenant_id}
+                'project_id': project_id}
         qos_policy = self.admin_client.create_qos_policy(**args)['policy']
         self.addCleanup(self.admin_client.delete_qos_policy, qos_policy['id'])
 
         return qos_policy
 
-    def _make_admin_policy_shared_to_tenant_id(self, tenant_id):
+    def _make_admin_policy_shared_to_project_id(self, project_id):
         policy = self._create_qos_policy()
         rbac_policy = self.admin_client.create_rbac_policy(
             object_type='qos_policy',
             object_id=policy['id'],
             action='access_as_shared',
-            target_tenant=tenant_id,
+            target_tenant=project_id,
         )['rbac_policy']
 
         return {'policy': policy, 'rbac_policy': rbac_policy}
@@ -645,7 +758,7 @@ class RbacSharedQosPoliciesTest(base.BaseAdminNetworkTest):
         qos_pol = self.create_qos_policy(
             name=data_utils.rand_name('test-policy'),
             description='test-shared-policy', shared=False,
-            tenant_id=self.admin_client.tenant_id)
+            project_id=self.admin_client.tenant_id)
         self.assertNotIn(qos_pol, self.client2.list_qos_policies()['policies'])
 
         # test update shared False -> True
@@ -676,7 +789,7 @@ class RbacSharedQosPoliciesTest(base.BaseAdminNetworkTest):
         self.assertNotIn(qos_pol, self.client2.list_qos_policies()['policies'])
 
     def _create_net_bound_qos_rbacs(self):
-        res = self._make_admin_policy_shared_to_tenant_id(
+        res = self._make_admin_policy_shared_to_project_id(
             self.client.tenant_id)
         qos_policy, rbac_for_client_tenant = res['policy'], res['rbac_policy']
 
@@ -694,22 +807,22 @@ class RbacSharedQosPoliciesTest(base.BaseAdminNetworkTest):
         return rbac_for_client_tenant, rbac_wildcard
 
     @decorators.idempotent_id('328b1f70-d424-11e5-a57f-54ee756c66df')
-    def test_net_bound_shared_policy_wildcard_and_tenant_id_wild_remove(self):
+    def test_net_bound_shared_policy_wildcard_and_project_id_wild_remove(self):
         client_rbac, wildcard_rbac = self._create_net_bound_qos_rbacs()
         # globally unshare the qos-policy, the specific share should remain
         self.admin_client.delete_rbac_policy(wildcard_rbac['id'])
         self.client.list_rbac_policies(id=client_rbac['id'])
 
     @decorators.idempotent_id('1997b00c-0c75-4e43-8ce2-999f9fa555ee')
-    def test_net_bound_shared_policy_wildcard_and_tenant_id_wild_remains(self):
+    def test_net_bound_shared_policy_wildcard_and_projectid_wild_remains(self):
         client_rbac, wildcard_rbac = self._create_net_bound_qos_rbacs()
         # remove client_rbac policy the wildcard share should remain
         self.admin_client.delete_rbac_policy(client_rbac['id'])
         self.client.list_rbac_policies(id=wildcard_rbac['id'])
 
     @decorators.idempotent_id('2ace9adc-da6e-11e5-aafe-54ee756c66df')
-    def test_policy_sharing_with_wildcard_and_tenant_id(self):
-        res = self._make_admin_policy_shared_to_tenant_id(
+    def test_policy_sharing_with_wildcard_and_project_id(self):
+        res = self._make_admin_policy_shared_to_project_id(
             self.client.tenant_id)
         qos_policy, rbac = res['policy'], res['rbac_policy']
         qos_pol = self.client.show_qos_policy(qos_policy['id'])['policy']
@@ -732,7 +845,7 @@ class RbacSharedQosPoliciesTest(base.BaseAdminNetworkTest):
 
     @decorators.idempotent_id('9f85c76a-a350-11e5-8ae5-54ee756c66df')
     def test_policy_target_update(self):
-        res = self._make_admin_policy_shared_to_tenant_id(
+        res = self._make_admin_policy_shared_to_project_id(
             self.client.tenant_id)
         # change to client2
         update_res = self.admin_client.update_rbac_policy(
@@ -746,7 +859,7 @@ class RbacSharedQosPoliciesTest(base.BaseAdminNetworkTest):
 
     @decorators.idempotent_id('a9b39f46-a350-11e5-97c7-54ee756c66df')
     def test_network_presence_prevents_policy_rbac_policy_deletion(self):
-        res = self._make_admin_policy_shared_to_tenant_id(
+        res = self._make_admin_policy_shared_to_project_id(
             self.client2.tenant_id)
         qos_policy_id = res['policy']['id']
         self._create_network(qos_policy_id, self.client2)
@@ -798,14 +911,14 @@ class RbacSharedQosPoliciesTest(base.BaseAdminNetworkTest):
             object_type='qos_policy', object_id=policy['id'],
             action='access_as_shared', target_tenant=self.client2.tenant_id)
         field_args = (('id',), ('id', 'action'), ('object_type', 'object_id'),
-                      ('tenant_id', 'target_tenant'))
+                      ('project_id', 'target_tenant'))
         for fields in field_args:
             res = self.admin_client.list_rbac_policies(fields=fields)
             self.assertEqual(set(fields), set(res['rbac_policies'][0].keys()))
 
     @decorators.idempotent_id('c10d993a-a350-11e5-9c7a-54ee756c66df')
     def test_rbac_policy_show(self):
-        res = self._make_admin_policy_shared_to_tenant_id(
+        res = self._make_admin_policy_shared_to_project_id(
             self.client.tenant_id)
         p1 = res['rbac_policy']
         p2 = self.admin_client.create_rbac_policy(
@@ -840,7 +953,7 @@ class RbacSharedQosPoliciesTest(base.BaseAdminNetworkTest):
 
     @decorators.idempotent_id('cd7d755a-a350-11e5-a344-54ee756c66df')
     def test_regular_client_blocked_from_sharing_anothers_policy(self):
-        qos_policy = self._make_admin_policy_shared_to_tenant_id(
+        qos_policy = self._make_admin_policy_shared_to_project_id(
             self.client.tenant_id)['policy']
         with testtools.ExpectedException(exceptions.BadRequest):
             self.client.create_rbac_policy(
@@ -984,6 +1097,71 @@ class QosDscpMarkingRuleTestJSON(base.BaseAdminNetworkTest):
         rules_ids = [r['id'] for r in rules]
         self.assertIn(rule1['id'], rules_ids)
         self.assertNotIn(rule2['id'], rules_ids)
+
+    @decorators.idempotent_id('19ed2286-ccb1-11e9-87d7-525400d6f522')
+    def test_qos_dscp_create_and_update(self):
+        """This test covers:
+
+           1.Creating a basic QoS policy with DSCP marking rule.
+           2.Updating QoS policy:
+           Administrator should have the ability to update existing QoS policy.
+           This test should verify that:
+           It's possible to update the existing DSCP marking rule with all of
+           the valid marks between 0-56, except of the invalid marks:
+           2-6, 42, 44, and 50-54 (which should be forbidden)
+        """
+
+        def _test_update_dscp_mark_values(self, dscp_policy_id, rule_id):
+            for mark in range(n_constants.VALID_DSCP_MARKS[1],
+                              self.VALID_DSCP_MARK1 + 1):
+                if mark in n_constants.VALID_DSCP_MARKS:
+                    self.admin_client.update_dscp_marking_rule(
+                        dscp_policy_id, rule_id, dscp_mark=mark)
+
+                    retrieved_rule = self.admin_client.show_dscp_marking_rule(
+                        dscp_policy_id, rule_id)['dscp_marking_rule']
+                    self.assertEqual(mark, retrieved_rule['dscp_mark'],
+                                     """current DSCP mark is incorrect:
+                                     expected value {0} actual value {1}
+                                     """.format(mark,
+                                     retrieved_rule['dscp_mark']))
+
+                else:
+                    self.assertRaises(exceptions.BadRequest,
+                                    self.admin_client.create_dscp_marking_rule,
+                                    dscp_policy_id,
+                                    mark)
+        # Setup network
+        self.network = self.create_network()
+
+        # Create QoS policy
+        dscp_policy_id = self.create_qos_policy(
+            name='test-policy',
+            description='test-qos-policy',
+            shared=True)['id']
+
+        # Associate QoS to the network
+        self.admin_client.update_network(
+            self.network['id'], qos_policy_id=dscp_policy_id)
+
+        # Set a new DSCP rule with the first mark in range
+        rule_id = self.admin_client.create_dscp_marking_rule(
+                  dscp_policy_id,
+                  n_constants.VALID_DSCP_MARKS[0])[
+                  'dscp_marking_rule']['id']
+
+        # Validate that the rule was set up properly
+        retrieved_rule = self.client.show_dscp_marking_rule(
+            dscp_policy_id, rule_id)['dscp_marking_rule']
+        self.assertEqual(n_constants.VALID_DSCP_MARKS[0],
+                         retrieved_rule['dscp_mark'],
+                         """current DSCP mark is incorrect:
+                         expected value {0} actual value {1}
+                         """.format(n_constants.VALID_DSCP_MARKS[0],
+                         retrieved_rule['dscp_mark']))
+
+        # Try to set marks in range 8:56 (invalid marks should raise an error)
+        _test_update_dscp_mark_values(self, dscp_policy_id, rule_id)
 
 
 class QosMinimumBandwidthRuleTestJSON(base.BaseAdminNetworkTest):

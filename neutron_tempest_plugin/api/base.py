@@ -117,6 +117,7 @@ class BaseNetworkTest(test.BaseTestCase):
         cls.ports = []
         cls.routers = []
         cls.floating_ips = []
+        cls.port_forwardings = []
         cls.metering_labels = []
         cls.service_profiles = []
         cls.flavors = []
@@ -124,6 +125,8 @@ class BaseNetworkTest(test.BaseTestCase):
         cls.qos_rules = []
         cls.qos_policies = []
         cls.ethertype = "IPv" + str(cls._ip_version)
+        cls.address_groups = []
+        cls.admin_address_groups = []
         cls.address_scopes = []
         cls.admin_address_scopes = []
         cls.subnetpools = []
@@ -136,6 +139,18 @@ class BaseNetworkTest(test.BaseTestCase):
         cls.keypairs = []
         cls.trunks = []
         cls.network_segment_ranges = []
+        cls.conntrack_helpers = []
+
+    @classmethod
+    def reserve_external_subnet_cidrs(cls):
+        client = cls.os_admin.network_client
+        ext_nets = client.list_networks(
+            **{"router:external": True})['networks']
+        for ext_net in ext_nets:
+            ext_subnets = client.list_subnets(
+                network_id=ext_net['id'])['subnets']
+            for ext_subnet in ext_subnets:
+                cls.reserve_subnet_cidr(ext_subnet['cidr'])
 
     @classmethod
     def resource_cleanup(cls):
@@ -144,9 +159,17 @@ class BaseNetworkTest(test.BaseTestCase):
             for trunk in cls.trunks:
                 cls._try_delete_resource(cls.delete_trunk, trunk)
 
+            # Clean up port forwardings
+            for pf in cls.port_forwardings:
+                cls._try_delete_resource(cls.delete_port_forwarding, pf)
+
             # Clean up floating IPs
             for floating_ip in cls.floating_ips:
                 cls._try_delete_resource(cls.delete_floatingip, floating_ip)
+
+            # Clean up conntrack helpers
+            for cth in cls.conntrack_helpers:
+                cls._try_delete_resource(cls.delete_conntrack_helper, cth)
 
             # Clean up routers
             for router in cls.routers:
@@ -368,16 +391,6 @@ class BaseNetworkTest(test.BaseTestCase):
         return cls.create_network(name=network_name, shared=True, **kwargs)
 
     @classmethod
-    def create_network_keystone_v3(cls, network_name=None, project_id=None,
-                                   tenant_id=None, client=None):
-        params = {}
-        if project_id:
-            params['project_id'] = project_id
-        if tenant_id:
-            params['tenant_id'] = tenant_id
-        return cls.create_network(name=network_name, client=client, **params)
-
-    @classmethod
     def create_subnet(cls, network, gateway='', cidr=None, mask_bits=None,
                       ip_version=None, client=None, reserve_cidr=True,
                       **kwargs):
@@ -478,7 +491,7 @@ class BaseNetworkTest(test.BaseTestCase):
         """
 
         if not cls.try_reserve_subnet_cidr(addr, **ipnetwork_kwargs):
-            raise ValueError('Subnet CIDR already reserved: %r'.format(
+            raise ValueError('Subnet CIDR already reserved: {0!r}'.format(
                 addr))
 
     @classmethod
@@ -558,6 +571,8 @@ class BaseNetworkTest(test.BaseTestCase):
         """Wrapper utility that returns a test port."""
         if CONF.network.port_vnic_type and 'binding:vnic_type' not in kwargs:
             kwargs['binding:vnic_type'] = CONF.network.port_vnic_type
+        if CONF.network.port_profile and 'binding:profile' not in kwargs:
+            kwargs['binding:profile'] = CONF.network.port_profile
         body = cls.client.create_port(network_id=network['id'],
                                       **kwargs)
         port = body['port']
@@ -652,11 +667,85 @@ class BaseNetworkTest(test.BaseTestCase):
         client.delete_floatingip(floating_ip['id'])
 
     @classmethod
+    def create_port_forwarding(cls, fip_id, internal_port_id,
+                               internal_port, external_port,
+                               internal_ip_address=None, protocol="tcp",
+                               client=None):
+        """Creates a port forwarding.
+
+        Create a port forwarding and schedule it for later deletion.
+        If a client is passed, then it is used for deleting the PF too.
+
+        :param fip_id: The ID of the floating IP address.
+
+        :param internal_port_id: The ID of the Neutron port associated to
+        the floating IP port forwarding.
+
+        :param internal_port: The TCP/UDP/other protocol port number of the
+        Neutron port fixed IP address associated to the floating ip
+        port forwarding.
+
+        :param external_port: The TCP/UDP/other protocol port number of
+        the port forwarding floating IP address.
+
+        :param internal_ip_address: The fixed IPv4 address of the Neutron
+        port associated to the floating IP port forwarding.
+
+        :param protocol: The IP protocol used in the floating IP port
+        forwarding.
+
+        :param client: network client to be used for creating and cleaning up
+        the floating IP port forwarding.
+        """
+
+        client = client or cls.client
+
+        pf = client.create_port_forwarding(
+            fip_id, internal_port_id, internal_port, external_port,
+            internal_ip_address, protocol)['port_forwarding']
+
+        # save ID of floating IP associated with port forwarding for final
+        # cleanup
+        pf['floatingip_id'] = fip_id
+
+        # save client to be used later in cls.delete_port_forwarding
+        # for final cleanup
+        pf['client'] = client
+        cls.port_forwardings.append(pf)
+        return pf
+
+    @classmethod
+    def update_port_forwarding(cls, fip_id, pf_id, client=None, **kwargs):
+        """Wrapper utility for update_port_forwarding."""
+        client = client or cls.client
+        return client.update_port_forwarding(fip_id, pf_id, **kwargs)
+
+    @classmethod
+    def delete_port_forwarding(cls, pf, client=None):
+        """Delete port forwarding
+
+        :param client: Client to be used
+        If client is not given it will use the client used to create
+        the port forwarding, or cls.client if unknown.
+        """
+
+        client = client or pf.get('client') or cls.client
+        client.delete_port_forwarding(pf['floatingip_id'], pf['id'])
+
+    @classmethod
     def create_router_interface(cls, router_id, subnet_id):
         """Wrapper utility that returns a router interface."""
         interface = cls.client.add_router_interface_with_subnet_id(
             router_id, subnet_id)
         return interface
+
+    @classmethod
+    def add_extra_routes_atomic(cls, *args, **kwargs):
+        return cls.client.add_extra_routes_atomic(*args, **kwargs)
+
+    @classmethod
+    def remove_extra_routes_atomic(cls, *args, **kwargs):
+        return cls.client.remove_extra_routes_atomic(*args, **kwargs)
 
     @classmethod
     def get_supported_qos_rule_types(cls):
@@ -665,10 +754,10 @@ class BaseNetworkTest(test.BaseTestCase):
 
     @classmethod
     def create_qos_policy(cls, name, description=None, shared=False,
-                          tenant_id=None, is_default=False):
+                          project_id=None, is_default=False):
         """Wrapper utility that returns a test QoS policy."""
         body = cls.admin_client.create_qos_policy(
-            name, description, shared, tenant_id, is_default)
+            name, description, shared, project_id, is_default)
         qos_policy = body['policy']
         cls.qos_policies.append(qos_policy)
         return qos_policy
@@ -691,6 +780,15 @@ class BaseNetworkTest(test.BaseTestCase):
         body = cls.admin_client.create_minimum_bandwidth_rule(
             policy_id, direction, min_kbps)
         qos_rule = body['minimum_bandwidth_rule']
+        cls.qos_rules.append(qos_rule)
+        return qos_rule
+
+    @classmethod
+    def create_qos_dscp_marking_rule(cls, policy_id, dscp_mark):
+        """Wrapper utility that creates and returns a QoS dscp rule."""
+        body = cls.admin_client.create_dscp_marking_rule(
+            policy_id, dscp_mark)
+        qos_rule = body['dscp_marking_rule']
         cls.qos_rules.append(qos_rule)
         return qos_rule
 
@@ -721,14 +819,27 @@ class BaseNetworkTest(test.BaseTestCase):
         return body['address_scope']
 
     @classmethod
-    def create_subnetpool(cls, name, is_admin=False, **kwargs):
+    def create_subnetpool(cls, name, is_admin=False, client=None, **kwargs):
+        if client is None:
+            client = cls.admin_client if is_admin else cls.client
+
         if is_admin:
-            body = cls.admin_client.create_subnetpool(name, **kwargs)
+            body = client.create_subnetpool(name, **kwargs)
             cls.admin_subnetpools.append(body['subnetpool'])
         else:
-            body = cls.client.create_subnetpool(name, **kwargs)
+            body = client.create_subnetpool(name, **kwargs)
             cls.subnetpools.append(body['subnetpool'])
         return body['subnetpool']
+
+    @classmethod
+    def create_address_group(cls, name, is_admin=False, **kwargs):
+        if is_admin:
+            body = cls.admin_client.create_address_group(name=name, **kwargs)
+            cls.admin_address_groups.append(body['address_group'])
+        else:
+            body = cls.client.create_address_group(name=name, **kwargs)
+            cls.address_groups.append(body['address_group'])
+        return body['address_group']
 
     @classmethod
     def create_project(cls, name=None, description=None):
@@ -796,6 +907,9 @@ class BaseNetworkTest(test.BaseTestCase):
         ip_version = ip_version or cls._ip_version
         default_params = (
             constants.DEFAULT_SECURITY_GROUP_RULE_PARAMS[ip_version])
+        if ('remote_address_group_id' in kwargs and 'remote_ip_prefix' in
+                default_params):
+            default_params.pop('remote_ip_prefix')
         for key, value in default_params.items():
             kwargs.setdefault(key, value)
 
@@ -886,6 +1000,55 @@ class BaseNetworkTest(test.BaseTestCase):
             utils.wait_until_true(is_parent_port_detached)
 
         client.delete_trunk(trunk['id'])
+
+    @classmethod
+    def create_conntrack_helper(cls, router_id, helper, protocol, port,
+                                client=None):
+        """Create a conntrack helper
+
+        Create a conntrack helper and schedule it for later deletion. If a
+        client is passed, then it is used for deleteing the CTH too.
+
+        :param router_id: The ID of the Neutron router associated to the
+        conntrack helper.
+
+        :param helper: The conntrack helper module alias
+
+        :param protocol: The conntrack helper IP protocol used in the conntrack
+        helper.
+
+        :param port: The conntrack helper IP protocol port number for the
+        conntrack helper.
+
+        :param client: network client to be used for creating and cleaning up
+        the conntrack helper.
+        """
+
+        client = client or cls.client
+
+        cth = client.create_conntrack_helper(router_id, helper, protocol,
+                                             port)['conntrack_helper']
+
+        # save ID of router associated with conntrack helper for final cleanup
+        cth['router_id'] = router_id
+
+        # save client to be used later in cls.delete_conntrack_helper for final
+        # cleanup
+        cth['client'] = client
+        cls.conntrack_helpers.append(cth)
+        return cth
+
+    @classmethod
+    def delete_conntrack_helper(cls, cth, client=None):
+        """Delete conntrack helper
+
+        :param client: Client to be used
+        If client is not given it will use the client used to create the
+        conntrack helper, or cls.client if unknown.
+        """
+
+        client = client or cth.get('client') or cls.client
+        client.delete_conntrack_helper(cth['router_id'], cth['id'])
 
 
 class BaseAdminNetworkTest(BaseNetworkTest):
@@ -1112,8 +1275,10 @@ class BaseSearchCriteriaTest(BaseNetworkTest):
 
     def get_bare_url(self, url):
         base_url = self.client.base_url
-        self.assertTrue(url.startswith(base_url))
-        return url[len(base_url):]
+        base_url_normalized = utils.normalize_url(base_url)
+        url_normalized = utils.normalize_url(url)
+        self.assertTrue(url_normalized.startswith(base_url_normalized))
+        return url_normalized[len(base_url_normalized):]
 
     @classmethod
     def _extract_resources(cls, body):

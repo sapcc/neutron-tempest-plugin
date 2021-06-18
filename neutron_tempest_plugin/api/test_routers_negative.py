@@ -19,6 +19,10 @@ from tempest.lib import exceptions as lib_exc
 import testtools
 
 from neutron_tempest_plugin.api import base_routers as base
+from neutron_tempest_plugin import config
+
+
+CONF = config.CONF
 
 
 class RoutersNegativeTestBase(base.BaseRouterTest):
@@ -31,19 +35,6 @@ class RoutersNegativeTestBase(base.BaseRouterTest):
         cls.router = cls.create_router(data_utils.rand_name('router'))
         cls.network = cls.create_network()
         cls.subnet = cls.create_subnet(cls.network)
-
-
-class RoutersNegativeTest(RoutersNegativeTestBase):
-
-    @decorators.attr(type='negative')
-    @decorators.idempotent_id('e3e751af-15a2-49cc-b214-a7154579e94f')
-    def test_delete_router_in_use(self):
-        # This port is deleted after a test by remove_router_interface.
-        port = self.create_port(self.network)
-        self.client.add_router_interface_with_port_id(
-            self.router['id'], port['id'])
-        with testtools.ExpectedException(lib_exc.Conflict):
-            self.client.delete_router(self.router['id'])
 
 
 class RoutersNegativePolicyTest(RoutersNegativeTestBase):
@@ -67,6 +58,44 @@ class RoutersNegativePolicyTest(RoutersNegativeTestBase):
             client2.add_router_interface_with_subnet_id(
                 self.router['id'], subnet['id'])
 
+    @decorators.attr(type='negative')
+    @decorators.idempotent_id('8010d27e-4ab7-4ea3-98b1-3995b7910efd')
+    def test_add_interface_in_use(self):
+        port = self.create_port(self.network)
+        self.client.add_router_interface_with_port_id(
+            self.router['id'], port['id'])
+        self.assertRaises(
+            lib_exc.Conflict,
+            self.client.add_router_interface_with_port_id,
+            self.router['id'], port['id'])
+
+    @decorators.attr(type='negative')
+    @decorators.idempotent_id('ed84c800-ee29-4b76-9419-d6d7b143fc47')
+    def test_add_interface_port_nonexist(self):
+        # port id is not a valid UUID
+        invalid_id = data_utils.rand_name('port')
+        self.assertRaises(
+            lib_exc.BadRequest,
+            self.client.add_router_interface_with_port_id,
+            self.router['id'], invalid_id)
+
+    @decorators.attr(type='negative')
+    @decorators.idempotent_id('dad7a8ba-2726-11eb-82dd-74e5f9e2a801')
+    def test_remove_associated_ports(self):
+        self.client.update_router(
+            self.router['id'],
+            external_gateway_info={
+                'network_id': CONF.network.public_network_id})
+        network = self.create_network()
+        subnet = self.create_subnet(network)
+        self.create_router_interface(self.router['id'], subnet['id'])
+        port_ids = [
+            item['id'] for item in self.admin_client.list_ports(
+                device_id=self.router['id'])['ports']]
+        for port_id in port_ids:
+            with testtools.ExpectedException(lib_exc.Conflict):
+                self.admin_client.delete_port(port_id)
+
 
 class DvrRoutersNegativeTest(RoutersNegativeTestBase):
 
@@ -78,6 +107,56 @@ class DvrRoutersNegativeTest(RoutersNegativeTestBase):
         with testtools.ExpectedException(lib_exc.Forbidden):
             self.create_router(
                 data_utils.rand_name('router'), distributed=True)
+
+
+class DvrRoutersNegativeTestExtended(RoutersNegativeTestBase):
+
+    required_extensions = ['dvr', 'router-admin-state-down-before-update']
+
+    @decorators.attr(type='negative')
+    @decorators.idempotent_id('5379fe06-e45e-4a4f-8b4a-9e28a924b451')
+    def test_router_update_distributed_returns_exception(self):
+        # create a centralized router
+        router_args = {'tenant_id': self.client.tenant_id,
+                       'distributed': False}
+        router = self._create_admin_router(
+            data_utils.rand_name('router'), admin_state_up=True,
+            **router_args)
+        self.assertTrue(router['admin_state_up'])
+        self.assertFalse(router['distributed'])
+        # attempt to set the router to distributed, catch BadRequest exception
+        self.assertRaises(lib_exc.BadRequest,
+                          self.admin_client.update_router,
+                          router['id'],
+                          distributed=True)
+
+    @decorators.attr(type='negative')
+    @decorators.idempotent_id('c277e945-3b39-442d-b149-e2e8cc6a2b40')
+    def test_router_update_centralized_returns_exception(self):
+        # create a centralized router
+        router_args = {'tenant_id': self.client.tenant_id,
+                       'distributed': False}
+        router = self._create_admin_router(
+            data_utils.rand_name('router'), admin_state_up=True,
+            **router_args)
+        self.assertTrue(router['admin_state_up'])
+        self.assertFalse(router['distributed'])
+        # take the router down to modify distributed->True
+        update_body = self.admin_client.update_router(router['id'],
+                                                      admin_state_up=False)
+        self.assertFalse(update_body['router']['admin_state_up'])
+        update_body = self.admin_client.update_router(router['id'],
+                                                      distributed=True)
+        self.assertTrue(update_body['router']['distributed'])
+        # set admin_state_up=True
+        update_body = self.admin_client.update_router(router['id'],
+                                                      admin_state_up=True)
+        self.assertTrue(update_body['router']['admin_state_up'])
+        # attempt to set the router to centralized, catch BadRequest exception
+        self.assertRaises(lib_exc.BadRequest,
+                          self.admin_client.update_router,
+                          router['id'],
+                          distributed=False)
 
 
 class HaRoutersNegativeTest(RoutersNegativeTestBase):

@@ -35,7 +35,7 @@ class TagTestJSON(base.BaseAdminNetworkTest):
         # create and get tags
         tags = ['red', 'blue']
         res_body = self.client.update_tags(self.resource, self.res_id, tags)
-        self.assertItemsEqual(tags, res_body['tags'])
+        self.assertCountEqual(tags, res_body['tags'])
         self._get_and_compare_tags(tags)
 
         # add a tag
@@ -53,7 +53,7 @@ class TagTestJSON(base.BaseAdminNetworkTest):
         # replace tags
         tags = ['red', 'yellow', 'purple']
         res_body = self.client.update_tags(self.resource, self.res_id, tags)
-        self.assertItemsEqual(tags, res_body['tags'])
+        self.assertCountEqual(tags, res_body['tags'])
         self._get_and_compare_tags(tags)
 
         # get tag

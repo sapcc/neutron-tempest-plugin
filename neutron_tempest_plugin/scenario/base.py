@@ -12,6 +12,8 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
+import distutils
+import re
 import subprocess
 
 from debtcollector import removals
@@ -19,6 +21,7 @@ import netaddr
 from neutron_lib.api import validators
 from neutron_lib import constants as neutron_lib_constants
 from oslo_log import log
+from paramiko import ssh_exception as ssh_exc
 from tempest.common.utils import net_utils
 from tempest.common import waiters
 from tempest.lib.common.utils import data_utils
@@ -26,13 +29,58 @@ from tempest.lib.common.utils import test_utils
 from tempest.lib import exceptions as lib_exc
 
 from neutron_tempest_plugin.api import base as base_api
+from neutron_tempest_plugin.common import ip as ip_utils
+from neutron_tempest_plugin.common import shell
 from neutron_tempest_plugin.common import ssh
+from neutron_tempest_plugin.common import utils
 from neutron_tempest_plugin import config
+from neutron_tempest_plugin import exceptions
 from neutron_tempest_plugin.scenario import constants
 
 CONF = config.CONF
 
 LOG = log.getLogger(__name__)
+
+
+def get_ncat_version(ssh_client=None):
+    cmd = "ncat --version 2>&1"
+    try:
+        version_result = shell.execute(cmd, ssh_client=ssh_client).stdout
+    except exceptions.ShellCommandFailed:
+        m = None
+    else:
+        m = re.match(r"Ncat: Version ([\d.]+) *.", version_result)
+    # NOTE(slaweq): by default lets assume we have ncat 7.60 which is in Ubuntu
+    # 18.04 which is used on u/s gates
+    return distutils.version.StrictVersion(m.group(1) if m else '7.60')
+
+
+def get_ncat_server_cmd(port, protocol, msg=None):
+    udp = ''
+    if protocol.lower() == neutron_lib_constants.PROTO_NAME_UDP:
+        udp = '-u'
+    cmd = "nc %(udp)s -p %(port)s -lk " % {
+        'udp': udp, 'port': port}
+    if msg:
+        if CONF.neutron_plugin_options.default_image_is_advanced:
+            cmd += "-c 'echo %s' " % msg
+        else:
+            cmd += "-e echo %s " % msg
+    cmd += "< /dev/zero &{0}sleep 0.1{0}".format('\n')
+    return cmd
+
+
+def get_ncat_client_cmd(ip_address, port, protocol):
+    udp = ''
+    if protocol.lower() == neutron_lib_constants.PROTO_NAME_UDP:
+        udp = '-u'
+    cmd = 'echo "knock knock" | nc '
+    ncat_version = get_ncat_version()
+    if ncat_version > distutils.version.StrictVersion('7.60'):
+        cmd += '-z '
+    cmd += '-w 1 %(udp)s %(host)s %(port)s' % {
+        'udp': udp, 'host': ip_address, 'port': port}
+    return cmd
 
 
 class BaseTempestTestCase(base_api.BaseNetworkTest):
@@ -74,9 +122,11 @@ class BaseTempestTestCase(base_api.BaseNetworkTest):
         if not kwargs.get('security_groups'):
             kwargs['security_groups'] = [{'name': 'default'}]
 
-        client = self.os_primary.servers_client
-        if kwargs.get('availability_zone'):
-            client = self.os_admin.servers_client
+        client = kwargs.pop('client', None)
+        if client is None:
+            client = self.os_primary.servers_client
+            if kwargs.get('availability_zone'):
+                client = self.os_admin.servers_client
 
         server = client.create_server(
             flavorRef=flavor_ref,
@@ -92,6 +142,10 @@ class BaseTempestTestCase(base_api.BaseNetworkTest):
         self.addCleanup(test_utils.call_and_ignore_notfound_exc,
                         client.delete_server,
                         server['server']['id'])
+
+        self.wait_for_server_active(server['server'], client=client)
+        self.wait_for_guest_os_ready(server['server'], client=client)
+
         return server
 
     @classmethod
@@ -104,13 +158,14 @@ class BaseTempestTestCase(base_api.BaseNetworkTest):
                 if sg['name'] == constants.DEFAULT_SECURITY_GROUP:
                     secgroup_id = sg['id']
                     break
-
+        resp = []
         for rule in rule_list:
             direction = rule.pop('direction')
-            client.create_security_group_rule(
-                direction=direction,
-                security_group_id=secgroup_id,
-                **rule)
+            resp.append(client.create_security_group_rule(
+                        direction=direction,
+                        security_group_id=secgroup_id,
+                        **rule)['security_group_rule'])
+        return resp
 
     @classmethod
     def create_loginable_secgroup_rule(cls, secgroup_id=None,
@@ -151,8 +206,49 @@ class BaseTempestTestCase(base_api.BaseNetworkTest):
         else:
             router = cls.create_admin_router(**kwargs)
         LOG.debug("Created router %s", router['name'])
-        cls.routers.append(router)
+        cls._wait_for_router_ha_active(router['id'])
         return router
+
+    @classmethod
+    def _wait_for_router_ha_active(cls, router_id):
+        router = cls.os_admin.network_client.show_router(router_id)['router']
+        if not router.get('ha'):
+            return
+
+        def _router_active_on_l3_agent():
+            agents = cls.os_admin.network_client.list_l3_agents_hosting_router(
+                router_id)['agents']
+            return "active" in [agent['ha_state'] for agent in agents]
+
+        error_msg = (
+            "Router %s is not active on any of the L3 agents" % router_id)
+        # NOTE(slaweq): Due to bug
+        # the bug https://launchpad.net/bugs/1923633 let's temporary skip test
+        # if router will not become active on any of the L3 agents in 600
+        # seconds. When that bug will be fixed, we should get rid of that skip
+        # and lower timeout to e.g. 300 seconds, or even less
+        try:
+            utils.wait_until_true(
+                _router_active_on_l3_agent,
+                timeout=600, sleep=5,
+                exception=lib_exc.TimeoutException(error_msg))
+        except lib_exc.TimeoutException:
+            raise cls.skipException("Bug 1923633. %s" % error_msg)
+
+    @classmethod
+    def skip_if_no_extension_enabled_in_l3_agents(cls, extension):
+        l3_agents = cls.os_admin.network_client.list_agents(
+                binary='neutron-l3-agent')['agents']
+        if not l3_agents:
+            # the tests should not be skipped when neutron-l3-agent does not
+            # exist (this validation doesn't apply to the setups like
+            # e.g. ML2/OVN)
+            return
+        for agent in l3_agents:
+            if extension in agent['configurations'].get('extensions', []):
+                return
+        raise cls.skipTest("No L3 agent with '%s' extension enabled found." %
+                           extension)
 
     @removals.remove(version='Stein',
                      message="Please use create_floatingip method instead of "
@@ -170,8 +266,8 @@ class BaseTempestTestCase(base_api.BaseNetworkTest):
         client = client or cls.os_primary.interfaces_client
         client.delete_interface(server_id, port_id=port_id)
 
-    def setup_network_and_server(
-        self, router=None, server_name=None, network=None, **kwargs):
+    def setup_network_and_server(self, router=None, server_name=None,
+                                 network=None, **kwargs):
         """Create network resources and a server.
 
         Creating a network, subnet, router, keypair, security group
@@ -205,19 +301,23 @@ class BaseTempestTestCase(base_api.BaseNetworkTest):
             server_kwargs['name'] = server_name
 
         self.server = self.create_server(**server_kwargs)
-        self.wait_for_server_active(self.server['server'])
         self.port = self.client.list_ports(network_id=self.network['id'],
                                            device_id=self.server[
                                                'server']['id'])['ports'][0]
         self.fip = self.create_floatingip(port=self.port)
 
-    def check_connectivity(self, host, ssh_user, ssh_key, servers=None):
-        ssh_client = ssh.Client(host, ssh_user, pkey=ssh_key)
+    def check_connectivity(self, host, ssh_user=None, ssh_key=None,
+                           servers=None, ssh_timeout=None, ssh_client=None):
+        # Either ssh_client or ssh_user+ssh_key is mandatory.
+        if ssh_client is None:
+            ssh_client = ssh.Client(host, ssh_user,
+                                    pkey=ssh_key, timeout=ssh_timeout)
         try:
             ssh_client.test_connection_auth()
-        except lib_exc.SSHTimeout as ssh_e:
+        except (lib_exc.SSHTimeout, ssh_exc.AuthenticationException) as ssh_e:
             LOG.debug(ssh_e)
             self._log_console_output(servers)
+            self._log_local_network_status()
             raise
 
     def _log_console_output(self, servers=None):
@@ -228,6 +328,11 @@ class BaseTempestTestCase(base_api.BaseNetworkTest):
             servers = self.os_primary.servers_client.list_servers()
             servers = servers['servers']
         for server in servers:
+            # NOTE(slaweq): sometimes servers are passed in dictionary with
+            # "server" key as first level key and in other cases it may be that
+            # it is just the "inner" dict without "server" key. Lets try to
+            # handle both cases
+            server = server.get("server") or server
             try:
                 console_output = (
                     self.os_primary.servers_client.get_console_output(
@@ -238,23 +343,55 @@ class BaseTempestTestCase(base_api.BaseNetworkTest):
                 LOG.debug("Server %s disappeared(deleted) while looking "
                           "for the console log", server['id'])
 
-    def _check_remote_connectivity(self, source, dest, should_succeed=True,
+    def _log_local_network_status(self):
+        self._log_ns_network_status()
+        for ns_name in ip_utils.IPCommand().list_namespaces():
+            self._log_ns_network_status(ns_name=ns_name)
+
+    def _log_ns_network_status(self, ns_name=None):
+        try:
+            local_ips = ip_utils.IPCommand(namespace=ns_name).list_addresses()
+            local_routes = ip_utils.IPCommand(namespace=ns_name).list_routes()
+            arp_table = ip_utils.arp_table(namespace=ns_name)
+            iptables = ip_utils.list_iptables(namespace=ns_name)
+            lsockets = ip_utils.list_listening_sockets(namespace=ns_name)
+        except exceptions.ShellCommandFailed:
+            LOG.debug('Namespace %s has been deleted synchronously during the '
+                      'host network collection process', ns_name)
+            return
+
+        LOG.debug('Namespace %s; IP Addresses:\n%s',
+                  ns_name, '\n'.join(str(r) for r in local_ips))
+        LOG.debug('Namespace %s; Local routes:\n%s',
+                  ns_name, '\n'.join(str(r) for r in local_routes))
+        LOG.debug('Namespace %s; Local ARP table:\n%s',
+                  ns_name, '\n'.join(str(r) for r in arp_table))
+        LOG.debug('Namespace %s; Local iptables:\n%s', ns_name, iptables)
+        LOG.debug('Namespace %s; Listening sockets:\n%s', ns_name, lsockets)
+
+    def _check_remote_connectivity(self, source, dest, count,
+                                   should_succeed=True,
                                    nic=None, mtu=None, fragmentation=True,
-                                   timeout=None):
+                                   timeout=None, pattern=None,
+                                   forbid_packet_loss=False):
         """check ping server via source ssh connection
 
         :param source: RemoteClient: an ssh connection from which to ping
         :param dest: and IP to ping against
+        :param count: Number of ping packet(s) to send
         :param should_succeed: boolean should ping succeed or not
         :param nic: specific network interface to ping from
         :param mtu: mtu size for the packet to be sent
         :param fragmentation: Flag for packet fragmentation
+        :param timeout: Timeout for all ping packet(s) to succeed
+        :param pattern: hex digits included in ICMP messages
+        :param forbid_packet_loss: forbid or allow some lost packets
         :returns: boolean -- should_succeed == ping
         :returns: ping is false if ping failed
         """
-        def ping_host(source, host, count=CONF.validation.ping_count,
+        def ping_host(source, host, count,
                       size=CONF.validation.ping_size, nic=None, mtu=None,
-                      fragmentation=True):
+                      fragmentation=True, pattern=None):
             IP_VERSION_4 = neutron_lib_constants.IP_VERSION_4
             IP_VERSION_6 = neutron_lib_constants.IP_VERSION_6
 
@@ -270,19 +407,26 @@ class BaseTempestTestCase(base_api.BaseNetworkTest):
                     cmd += ' -M do'
                 size = str(net_utils.get_ping_payload_size(
                     mtu=mtu, ip_version=ip_version))
-            cmd += ' -c{0} -w{0} -s{1} {2}'.format(count, size, host)
+            if pattern:
+                cmd += ' -p {pattern}'.format(pattern=pattern)
+            cmd += ' -c{0} -W{0} -s{1} {2}'.format(count, size, host)
             return source.exec_command(cmd)
 
         def ping_remote():
             try:
-                result = ping_host(source, dest, nic=nic, mtu=mtu,
-                                   fragmentation=fragmentation)
+                result = ping_host(source, dest, count, nic=nic, mtu=mtu,
+                                   fragmentation=fragmentation,
+                                   pattern=pattern)
 
             except lib_exc.SSHExecCommandFailed:
                 LOG.warning('Failed to ping IP: %s via a ssh connection '
                             'from: %s.', dest, source.host)
                 return not should_succeed
             LOG.debug('ping result: %s', result)
+
+            if forbid_packet_loss and ' 0% packet loss' not in result:
+                LOG.debug('Packet loss detected')
+                return not should_succeed
 
             if validators.validate_ip_address(dest) is None:
                 # Assert that the return traffic was from the correct
@@ -296,17 +440,23 @@ class BaseTempestTestCase(base_api.BaseNetworkTest):
 
     def check_remote_connectivity(self, source, dest, should_succeed=True,
                                   nic=None, mtu=None, fragmentation=True,
-                                  servers=None, timeout=None):
+                                  servers=None, timeout=None,
+                                  ping_count=CONF.validation.ping_count,
+                                  pattern=None, forbid_packet_loss=False):
         try:
             self.assertTrue(self._check_remote_connectivity(
-                source, dest, should_succeed, nic, mtu, fragmentation,
-                timeout=timeout))
-        except lib_exc.SSHTimeout as ssh_e:
+                source, dest, ping_count, should_succeed, nic, mtu,
+                fragmentation,
+                timeout=timeout, pattern=pattern,
+                forbid_packet_loss=forbid_packet_loss))
+        except (lib_exc.SSHTimeout, ssh_exc.AuthenticationException) as ssh_e:
             LOG.debug(ssh_e)
             self._log_console_output(servers)
+            self._log_local_network_status()
             raise
         except AssertionError:
             self._log_console_output(servers)
+            self._log_local_network_status()
             raise
 
     def ping_ip_address(self, ip_address, should_succeed=True,
@@ -373,3 +523,96 @@ class BaseTempestTestCase(base_api.BaseNetworkTest):
         """
         self.wait_for_server_status(
             server, constants.SERVER_STATUS_ACTIVE, client)
+
+    def wait_for_guest_os_ready(self, server, client=None):
+        if not CONF.compute_feature_enabled.console_output:
+            LOG.debug('Console output not supported, cannot check if server '
+                      '%s is ready.', server['id'])
+            return
+
+        client = client or self.os_primary.servers_client
+
+        def system_booted():
+            console_output = client.get_console_output(server['id'])['output']
+            for line in console_output.split('\n'):
+                if 'login:' in line.lower():
+                    return True
+            return False
+
+        try:
+            utils.wait_until_true(system_booted, sleep=5)
+        except utils.WaitTimeout:
+            LOG.debug("No correct output in console of server %s found. "
+                      "Guest operating system status can't be checked.",
+                      server['id'])
+
+    def check_servers_hostnames(self, servers, timeout=None, log_errors=True,
+                                external_port=None):
+        """Compare hostnames of given servers with their names."""
+        try:
+            for server in servers:
+                kwargs = {}
+                if timeout:
+                    kwargs['timeout'] = timeout
+                try:
+                    kwargs['port'] = external_port or (
+                        server['port_forwarding_tcp']['external_port'])
+                except KeyError:
+                    pass
+                ssh_client = ssh.Client(
+                    self.fip['floating_ip_address'],
+                    CONF.validation.image_ssh_user,
+                    pkey=self.keypair['private_key'],
+                    **kwargs)
+                self.assertIn(server['name'],
+                              ssh_client.get_hostname())
+        except (lib_exc.SSHTimeout, ssh_exc.AuthenticationException) as ssh_e:
+            LOG.debug(ssh_e)
+            if log_errors:
+                self._log_console_output(servers)
+                self._log_local_network_status()
+            raise
+        except AssertionError as assert_e:
+            LOG.debug(assert_e)
+            if log_errors:
+                self._log_console_output(servers)
+                self._log_local_network_status()
+            raise
+
+    def ensure_nc_listen(self, ssh_client, port, protocol, echo_msg=None,
+                         servers=None):
+        """Ensure that nc server listening on the given TCP/UDP port is up.
+
+        Listener is created always on remote host.
+        """
+        def spawn_and_check_process():
+            self.nc_listen(ssh_client, port, protocol, echo_msg, servers)
+            return utils.process_is_running(ssh_client, "nc")
+
+        utils.wait_until_true(spawn_and_check_process)
+
+    def nc_listen(self, ssh_client, port, protocol, echo_msg=None,
+                  servers=None):
+        """Create nc server listening on the given TCP/UDP port.
+
+        Listener is created always on remote host.
+        """
+        try:
+            return ssh_client.execute_script(
+                get_ncat_server_cmd(port, protocol, echo_msg),
+                become_root=True, combine_stderr=True)
+        except (lib_exc.SSHTimeout, ssh_exc.AuthenticationException) as ssh_e:
+            LOG.debug(ssh_e)
+            self._log_console_output(servers)
+            self._log_local_network_status()
+            raise
+
+    def nc_client(self, ip_address, port, protocol):
+        """Check connectivity to TCP/UDP port at host via nc.
+
+        Client is always executed locally on host where tests are executed.
+        """
+        cmd = get_ncat_client_cmd(ip_address, port, protocol)
+        result = shell.execute_local_command(cmd)
+        self.assertEqual(0, result.exit_status)
+        return result.stdout

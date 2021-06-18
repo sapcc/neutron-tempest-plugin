@@ -13,7 +13,9 @@
 #    under the License.
 
 from neutron_tempest_plugin.common import tempest_fixtures
+from tempest.lib.common.utils import data_utils
 from tempest.lib import decorators
+from tempest.lib import exceptions as lib_exc
 
 from neutron_tempest_plugin.api import base
 
@@ -66,10 +68,7 @@ class AgentManagementTestJSON(base.BaseAdminNetworkTest):
     @decorators.idempotent_id('68a94a14-1243-46e6-83bf-157627e31556')
     def test_update_agent_description(self):
         agents = self.admin_client.list_agents()['agents']
-        try:
-            dyn_agent = agents[1]
-        except IndexError:
-            raise self.skipException("This test requires at least two agents.")
+        dyn_agent = self._select_one_agent_for_update(agents)
 
         self.useFixture(tempest_fixtures.LockFixture('agent_description'))
         description = 'description for update agent.'
@@ -86,3 +85,17 @@ class AgentManagementTestJSON(base.BaseAdminNetworkTest):
         origin_agent = {'description': description}
         self.admin_client.update_agent(agent_id=dyn_agent['id'],
                                        agent_info=origin_agent)
+
+    def _select_one_agent_for_update(self, agents):
+        """Return one agent that is not the one selected at resource_setup"""
+        for agent in agents:
+            if self.agent['id'] != agent['id']:
+                return agent
+        raise self.skipException("This test requires at least two agents.")
+
+    @decorators.idempotent_id('b33af888-b6ac-4e68-a0ca-0444c2696cf9')
+    def test_delete_agent_negative(self):
+        non_existent_id = data_utils.rand_uuid()
+        self.assertRaises(
+            lib_exc.NotFound,
+            self.admin_client.delete_agent, non_existent_id)

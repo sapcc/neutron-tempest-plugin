@@ -15,6 +15,7 @@
 import collections
 
 from neutron_lib import constants
+from neutron_lib.utils import test
 from oslo_log import log as logging
 from tempest.common import utils as tutils
 from tempest.lib.common.utils import data_utils
@@ -39,7 +40,7 @@ ServerWithTrunkPort = collections.namedtuple(
 
 
 class TrunkTest(base.BaseTempestTestCase):
-    credentials = ['primary']
+    credentials = ['primary', 'admin']
     force_tenant_isolation = False
 
     @classmethod
@@ -95,6 +96,37 @@ class TrunkTest(base.BaseTempestTestCase):
         return ServerWithTrunkPort(port=port, subport=subport, trunk=trunk,
                                    floating_ip=floating_ip, server=server,
                                    ssh_client=ssh_client)
+
+    def _create_advanced_servers_with_trunk_port(self, num_servers=1,
+                                                 subport_network=None,
+                                                 segmentation_id=None,
+                                                 vlan_subnet=None,
+                                                 use_advanced_image=False):
+        server_list = []
+        for _ in range(0, num_servers):
+            vm = self._create_server_with_trunk_port(
+                subport_network,
+                segmentation_id,
+                use_advanced_image)
+            server_list.append(vm)
+            self._configure_vlan_subport(
+                vm=vm,
+                vlan_tag=segmentation_id,
+                vlan_subnet=vlan_subnet)
+
+        for server in server_list:
+            self.check_connectivity(
+                host=vm.floating_ip['floating_ip_address'],
+                ssh_client=vm.ssh_client)
+
+        return server_list
+
+    def _check_servers_remote_connectivity(self, vms=None,
+                                           should_succeed=True):
+        self.check_remote_connectivity(
+            vms[0].ssh_client,
+            vms[1].subport['fixed_ips'][0]['ip_address'],
+            should_succeed=should_succeed)
 
     def _create_server_port(self, network=None, **params):
         network = network or self.network
@@ -161,6 +193,7 @@ class TrunkTest(base.BaseTempestTestCase):
 
     def _configure_vlan_subport(self, vm, vlan_tag, vlan_subnet):
         self.wait_for_server_active(server=vm.server)
+        self.wait_for_guest_os_ready(vm.server)
         self._wait_for_trunk(trunk=vm.trunk)
         self._wait_for_port(port=vm.port)
         self._wait_for_port(port=vm.subport)
@@ -199,6 +232,7 @@ class TrunkTest(base.BaseTempestTestCase):
         vm2 = self._create_server_with_trunk_port()
         for vm in (vm1, vm2):
             self.wait_for_server_active(server=vm.server)
+            self.wait_for_guest_os_ready(vm.server)
             self._wait_for_trunk(vm.trunk)
             self._assert_has_ssh_connectivity(vm.ssh_client)
 
@@ -244,41 +278,136 @@ class TrunkTest(base.BaseTempestTestCase):
             self._wait_for_trunk(vm.trunk)
             self._assert_has_ssh_connectivity(vm1.ssh_client)
 
-    @testtools.skipUnless(CONF.neutron_plugin_options.advanced_image_ref,
-                          "Advanced image is required to run this test.")
-    @decorators.idempotent_id('a8a02c9b-b453-49b5-89a2-cce7da66aafb')
+    @testtools.skipUnless(
+        (CONF.neutron_plugin_options.advanced_image_ref or
+         CONF.neutron_plugin_options.default_image_is_advanced),
+        "Advanced image is required to run this test.")
+    @testtools.skipUnless(
+         (CONF.neutron_plugin_options.reboots_in_test > 0),
+         "Number of reboots > 0 is reqired for this test")
+    @decorators.idempotent_id('a8a02c9b-b453-49b5-89a2-cce7da6680fb')
+    def test_subport_connectivity_soft_reboot(self):
+        vlan_tag = 10
+        vlan_network = self.create_network()
+        vlan_subnet = self.create_subnet(network=vlan_network, gateway=None)
+        use_advanced_image = (
+            not CONF.neutron_plugin_options.default_image_is_advanced)
+
+        # allow intra-security-group traffic
+        sg_rule = self.create_pingable_secgroup_rule(self.security_group['id'])
+        self.addCleanup(
+            self.os_primary.network_client.delete_security_group_rule,
+            sg_rule['id'])
+
+        vms = self._create_advanced_servers_with_trunk_port(
+            num_servers=2,
+            subport_network=vlan_network,
+            segmentation_id=vlan_tag,
+            vlan_subnet=vlan_subnet,
+            use_advanced_image=use_advanced_image)
+        # check remote connectivity true before reboots
+        self._check_servers_remote_connectivity(vms=vms)
+        client = self.os_tempest.compute.ServersClient()
+        for _ in range(CONF.neutron_plugin_options.reboots_in_test):
+            client.reboot_server(vms[1].server['id'],
+                                 **{'type': 'SOFT'})
+            self.wait_for_server_active(vms[1].server)
+            self._configure_vlan_subport(vm=vms[1],
+                                         vlan_tag=vlan_tag,
+                                         vlan_subnet=vlan_subnet)
+            self._check_servers_remote_connectivity(vms=vms)
+
+    @test.unstable_test("bug 1897796")
+    @testtools.skipUnless(
+        (CONF.neutron_plugin_options.advanced_image_ref or
+         CONF.neutron_plugin_options.default_image_is_advanced),
+        "Advanced image is required to run this test.")
+    @decorators.idempotent_id('a8a02c9b-b453-49b5-89a2-cce7da66bbcb')
     def test_subport_connectivity(self):
         vlan_tag = 10
         vlan_network = self.create_network()
         vlan_subnet = self.create_subnet(network=vlan_network, gateway=None)
+        use_advanced_image = (
+            not CONF.neutron_plugin_options.default_image_is_advanced)
+        vms = self._create_advanced_servers_with_trunk_port(
+            num_servers=2,
+            subport_network=vlan_network,
+            segmentation_id=vlan_tag,
+            vlan_subnet=vlan_subnet,
+            use_advanced_image=use_advanced_image)
+        # Ping from server1 to server2 via VLAN interface should fail because
+        # we haven't allowed ICMP
+        self._check_servers_remote_connectivity(vms=vms,
+                                                should_succeed=False)
+        # allow intra-security-group traffic
+        sg_rule = self.create_pingable_secgroup_rule(self.security_group['id'])
+        self.addCleanup(
+                self.os_primary.network_client.delete_security_group_rule,
+                sg_rule['id'])
+        self._check_servers_remote_connectivity(vms=vms)
 
-        vm1 = self._create_server_with_trunk_port(subport_network=vlan_network,
-                                                  segmentation_id=vlan_tag,
-                                                  use_advanced_image=True)
-        vm2 = self._create_server_with_trunk_port(subport_network=vlan_network,
-                                                  segmentation_id=vlan_tag,
-                                                  use_advanced_image=True)
+    @testtools.skipUnless(CONF.compute_feature_enabled.cold_migration,
+                          'Cold migration is not available.')
+    @testtools.skipUnless(CONF.compute.min_compute_nodes > 1,
+                          'Less than 2 compute nodes, skipping multinode '
+                          'tests.')
+    @testtools.skipUnless(
+        (CONF.neutron_plugin_options.advanced_image_ref or
+         CONF.neutron_plugin_options.default_image_is_advanced),
+        "Advanced image is required to run this test.")
+    @decorators.attr(type='slow')
+    @decorators.idempotent_id('ecd7de30-1c90-4280-b97c-1bed776d5d07')
+    def test_trunk_vm_migration(self):
+        '''Test connectivity after migration of the server with trunk
 
-        for vm in [vm1, vm2]:
-            self._configure_vlan_subport(vm=vm,
+        A successfully migrated server shows a VERIFY_RESIZE status that
+        requires confirmation. Need to reconfigure VLAN interface on server
+        side after migration is finished as the configuration doesn't survive
+        the reboot.
+        '''
+        vlan_tag = 10
+        vlan_network = self.create_network()
+        vlan_subnet = self.create_subnet(vlan_network)
+        sg_rule = self.create_pingable_secgroup_rule(self.security_group['id'])
+        self.addCleanup(
+                self.os_primary.network_client.delete_security_group_rule,
+                sg_rule['id'])
+
+        use_advanced_image = (
+            not CONF.neutron_plugin_options.default_image_is_advanced)
+        servers = {}
+        for role in ['migrate', 'connection_test']:
+            servers[role] = self._create_server_with_trunk_port(
+                                subport_network=vlan_network,
+                                segmentation_id=vlan_tag,
+                                use_advanced_image=use_advanced_image)
+        for role in ['migrate', 'connection_test']:
+            self.wait_for_server_active(servers[role].server)
+            self.wait_for_guest_os_ready(servers[role].server)
+            self._configure_vlan_subport(vm=servers[role],
                                          vlan_tag=vlan_tag,
                                          vlan_subnet=vlan_subnet)
 
-        # Ping from server1 to server2 via VLAN interface should fail because
-        # we haven't allowed ICMP
         self.check_remote_connectivity(
-            vm1.ssh_client,
-            vm2.subport['fixed_ips'][0]['ip_address'],
-            should_succeed=False)
+                servers['connection_test'].ssh_client,
+                servers['migrate'].subport['fixed_ips'][0]['ip_address'])
 
-        # allow intra-security-group traffic
-        self.create_pingable_secgroup_rule(self.security_group['id'])
+        client = self.os_admin.compute.ServersClient()
+        client.migrate_server(servers['migrate'].server['id'])
+        self.wait_for_server_status(servers['migrate'].server,
+                                    'VERIFY_RESIZE')
+        client.confirm_resize_server(servers['migrate'].server['id'])
+        self._configure_vlan_subport(vm=servers['migrate'],
+                                     vlan_tag=vlan_tag,
+                                     vlan_subnet=vlan_subnet)
+
         self.check_remote_connectivity(
-            vm1.ssh_client,
-            vm2.subport['fixed_ips'][0]['ip_address'])
+                servers['connection_test'].ssh_client,
+                servers['migrate'].subport['fixed_ips'][0]['ip_address'])
 
     @testtools.skipUnless(
-        CONF.neutron_plugin_options.advanced_image_ref,
+        (CONF.neutron_plugin_options.advanced_image_ref or
+         CONF.neutron_plugin_options.default_image_is_advanced),
         "Advanced image is required to run this test.")
     @testtools.skipUnless(
         CONF.neutron_plugin_options.q_agent == "linuxbridge",
@@ -290,36 +419,46 @@ class TrunkTest(base.BaseTempestTestCase):
         vlan_subnet = self.create_subnet(vlan_network)
         self.create_router_interface(self.router['id'], vlan_subnet['id'])
 
+        use_advanced_image = (
+            not CONF.neutron_plugin_options.default_image_is_advanced)
+
         # Create servers
         trunk_network_server = self._create_server_with_trunk_port(
             subport_network=vlan_network,
             segmentation_id=vlan_tag,
-            use_advanced_image=True)
+            use_advanced_image=use_advanced_image)
         normal_network_server = self._create_server_with_network(self.network)
         vlan_network_server = self._create_server_with_network(vlan_network)
+        vms = [normal_network_server, vlan_network_server]
 
         self._configure_vlan_subport(vm=trunk_network_server,
                                      vlan_tag=vlan_tag,
                                      vlan_subnet=vlan_subnet)
-        for vm in [normal_network_server, vlan_network_server]:
+        for vm in vms:
             self.wait_for_server_active(vm.server)
+            self.wait_for_guest_os_ready(vm.server)
 
         # allow ICMP traffic
-        self.create_pingable_secgroup_rule(self.security_group['id'])
+        sg_rule = self.create_pingable_secgroup_rule(self.security_group['id'])
+        self.addCleanup(
+                self.os_primary.network_client.delete_security_group_rule,
+                sg_rule['id'])
 
         # Ping from trunk_network_server to normal_network_server
         # via parent port
         self.check_remote_connectivity(
             trunk_network_server.ssh_client,
             normal_network_server.port['fixed_ips'][0]['ip_address'],
-            should_succeed=True)
+            should_succeed=True,
+            servers=vms)
 
         # Ping from trunk_network_server to vlan_network_server via VLAN
         # interface should success
         self.check_remote_connectivity(
             trunk_network_server.ssh_client,
             vlan_network_server.port['fixed_ips'][0]['ip_address'],
-            should_succeed=True)
+            should_succeed=True,
+            servers=vms)
 
         # Delete the trunk
         self.delete_trunk(
@@ -333,7 +472,8 @@ class TrunkTest(base.BaseTempestTestCase):
         self.check_remote_connectivity(
             trunk_network_server.ssh_client,
             normal_network_server.port['fixed_ips'][0]['ip_address'],
-            should_succeed=True)
+            should_succeed=True,
+            servers=vms)
 
         # Ping from trunk_network_server to vlan_network_server via VLAN
         # interface should fail after trunk deleted
