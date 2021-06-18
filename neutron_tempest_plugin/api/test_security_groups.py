@@ -131,7 +131,8 @@ class RbacSharedSecurityGroupTest(base.BaseAdminNetworkTest):
     def _create_security_group(self):
         return self.create_security_group(
             name=data_utils.rand_name('test-sg'),
-            project={'id': self.admin_client.tenant_id})
+            project={'id': self.admin_client.tenant_id},
+            client=self.admin_client)
 
     def _make_admin_sg_shared_to_tenant_id(self, tenant_id):
         sg = self._create_security_group()
