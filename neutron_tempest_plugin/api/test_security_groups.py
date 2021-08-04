@@ -119,7 +119,8 @@ class SecGroupProtocolIPv6Test(SecGroupProtocolTest):
 
 class RbacSharedSecurityGroupTest(base.BaseAdminNetworkTest):
 
-    force_tenant_isolation = True
+    # Changed to false due to ccloud domain limits
+    force_tenant_isolation = False
     credentials = ['primary', 'alt', 'admin']
     required_extensions = ['security-group', 'rbac-security-groups']
 
