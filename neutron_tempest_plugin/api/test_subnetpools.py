@@ -424,7 +424,7 @@ class SubnetPoolsSearchCriteriaTest(base.BaseSearchCriteriaTest,
 
 class RbacSubnetPoolTest(SubnetPoolsTestBase):
 
-    force_tenant_isolation = True
+    force_tenant_isolation = False
     credentials = ['primary', 'alt', 'admin']
     required_extensions = ['rbac-subnetpool']
 

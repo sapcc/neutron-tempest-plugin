@@ -143,7 +143,7 @@ class AddressGroupTest(base.BaseAdminNetworkTest):
 
 class RbacSharedAddressGroupTest(base.BaseAdminNetworkTest):
 
-    force_tenant_isolation = True
+    force_tenant_isolation = False
     credentials = ['primary', 'alt', 'admin']
     required_extensions = ['security-group', 'address-group',
                            'rbac-address-group']

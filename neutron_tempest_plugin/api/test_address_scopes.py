@@ -120,7 +120,7 @@ class AddressScopeTest(AddressScopeTestBase):
 
 class RbacAddressScopeTest(AddressScopeTestBase):
 
-    force_tenant_isolation = True
+    force_tenant_isolation = False
     credentials = ['primary', 'alt', 'admin']
     required_extensions = ['address-scope', 'rbac-address-scope']
 

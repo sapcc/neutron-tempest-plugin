@@ -459,7 +459,7 @@ class SecGroupProtocolIPv6Test(SecGroupProtocolTest):
 
 class RbacSharedSecurityGroupTest(base.BaseAdminNetworkTest):
 
-    force_tenant_isolation = True
+    force_tenant_isolation = False
     credentials = ['primary', 'alt', 'admin']
     required_extensions = ['security-group', 'rbac-security-groups']
 
