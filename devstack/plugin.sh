@@ -6,7 +6,6 @@ source "${NEUTRON_TEMPEST_PLUGIN_DIR}/customize_image.sh"
 # install_neutron_tempest_plugin
 function install_neutron_tempest_plugin {
     setup_dev_lib "neutron-tempest-plugin"
-    install_customize_image_tools
 }
 
 if [[ "$1" == "stack" ]]; then
@@ -20,6 +19,7 @@ if [[ "$1" == "stack" ]]; then
         test-config)
             echo_summary "Configuring neutron-tempest-plugin tempest options"
             configure_advanced_image
+            create_flavor_for_advance_image $ADVANCED_INSTANCE_TYPE 256 4 1
             configure_flavor_for_advanced_image
     esac
 fi

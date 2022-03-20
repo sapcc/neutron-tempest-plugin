@@ -84,6 +84,7 @@
         - standard-attr-timestamp
         - standard-attr-tag
         - subnet_allocation
+        - subnet-service-types
         - trunk
         - trunk-details
       network_api_extensions_tempest:
@@ -166,6 +167,13 @@
         Q_ML2_PLUGIN_MECHANISM_DRIVERS: openvswitch
         NETWORK_API_EXTENSIONS: "{{ network_api_extensions | join(',') }}"
         TEMPEST_PLUGINS: /opt/stack/neutron-tempest-plugin
+        # NOTE(slaweq) some tests are not running fine with ubuntu minimal on
+        # Rocky
+        IMAGE_URLS: https://cloud-images.ubuntu.com/releases/bionic/release/ubuntu-18.04-server-cloudimg-amd64.img
+        ADVANCED_IMAGE_NAME: ubuntu-18.04-server-cloudimg-amd64
+        ADVANCED_INSTANCE_TYPE: ds512M
+        ADVANCED_INSTANCE_USER: ubuntu
+        CUSTOMIZE_IMAGE: false
       devstack_local_conf:
         post-config:
           $NEUTRON_CONF:
@@ -192,9 +200,21 @@
             neutron_plugin_options:
               available_type_drivers: flat,vlan,local,vxlan
               firewall_driver: openvswitch
-      tempest_black_regex: "\
+      # NOTE(bcafarel): filtering out unstable tests or tests with known
+      # issues in the used pinned version for this EM branch
+      tempest_black_regex: &rocky_tempest_exclude "\
+          (^neutron_tempest_plugin.scenario.admin.test_floatingip.FloatingIpTestCasesAdmin.test_two_vms_fips)|\
+          (^neutron_tempest_plugin.scenario.test_floatingip.FloatingIPQosTest.test_qos)|\
+          (^neutron_tempest_plugin.scenario.test_internal_dns.InternalDNSTest.test_dns_domain_and_name)|\
           (^neutron_tempest_plugin.scenario.test_port_forwardings.PortForwardingTestJSON.test_port_forwarding_to_2_servers)|\
-          (^neutron_tempest_plugin.scenario.test_security_groups.NetworkSecGroupTest.test_multiple_ports_portrange_remote)"
+          (^neutron_tempest_plugin.scenario.test_ports.PortsTest.test_previously_used_port)|\
+          (^neutron_tempest_plugin.scenario.test_security_groups.NetworkSecGroupTest.test_ip_prefix)|\
+          (^neutron_tempest_plugin.scenario.test_security_groups.NetworkSecGroupTest.test_multiple_ports_portrange_remote)|\
+          (^neutron_tempest_plugin.scenario.test_security_groups.NetworkSecGroupTest.test_multiple_ports_secgroup_inheritance)|\
+          (^neutron_tempest_plugin.scenario.test_security_groups.NetworkSecGroupTest.test_remote_group)|\
+          (^neutron_tempest_plugin.scenario.test_trunk.TrunkTest.test_subport_connectivity)|\
+          (^tempest.api.compute.servers.test_attach_interfaces.AttachInterfacesTestJSON.test_reassign_port_between_servers)|\
+          (^tempest.api.compute.servers.test_attach_interfaces.AttachInterfacesUnderV243Test.test_add_remove_fixed_ip)"
     branches:
       - stable/rocky
     irrelevant-files: &openvswitch-scenario-irrelevant-files
@@ -205,6 +225,8 @@
       - ^.*\.rst$
       - ^neutron/locale/.*$
       - ^neutron/tests/unit/.*$
+      - ^neutron/tests/fullstack/.*
+      - ^neutron/tests/functional/.*
       - ^tools/.*$
       - ^tox.ini$
       - ^neutron/agent/windows/.*$
@@ -225,6 +247,7 @@
       <<: *scenario_vars_rocky
       devstack_localrc:
         USE_PYTHON3: True
+        ADVANCED_INSTANCE_TYPE: ds512M
     branches: ^(?!stable/rocky).*$
     irrelevant-files: *openvswitch-scenario-irrelevant-files
 
@@ -262,6 +285,13 @@
         Q_ML2_TENANT_NETWORK_TYPE: vxlan
         Q_ML2_PLUGIN_MECHANISM_DRIVERS: openvswitch
         TEMPEST_PLUGINS: /opt/stack/neutron-tempest-plugin
+        # NOTE(slaweq) some tests are not running fine with ubuntu minimal on
+        # Rocky
+        IMAGE_URLS: https://cloud-images.ubuntu.com/releases/bionic/release/ubuntu-18.04-server-cloudimg-amd64.img
+        ADVANCED_IMAGE_NAME: ubuntu-18.04-server-cloudimg-amd64
+        ADVANCED_INSTANCE_TYPE: ds512M
+        ADVANCED_INSTANCE_USER: ubuntu
+        CUSTOMIZE_IMAGE: false
       devstack_local_conf:
         post-config:
           $NEUTRON_CONF:
@@ -290,13 +320,7 @@
             neutron_plugin_options:
               available_type_drivers: flat,vlan,local,vxlan
               firewall_driver: iptables_hybrid
-      # TODO(bcafarel): remove trunks subport_connectivity test from blacklist
-      # when bug https://bugs.launchpad.net/neutron/+bug/1838760 will be fixed
-      # NOTE(bcafarel): other are newer tests, unstable on rocky branch
-      tempest_black_regex: "\
-          (^neutron_tempest_plugin.scenario.test_trunk.TrunkTest.test_subport_connectivity)|\
-          (^neutron_tempest_plugin.scenario.test_port_forwardings.PortForwardingTestJSON.test_port_forwarding_to_2_servers)|\
-          (^neutron_tempest_plugin.scenario.test_security_groups.NetworkSecGroupTest.test_multiple_ports_portrange_remote)"
+      tempest_black_regex: *rocky_tempest_exclude
     branches:
       - stable/rocky
     irrelevant-files: &iptables_hybrid_irrelevant_files
@@ -307,6 +331,8 @@
       - ^.*\.rst$
       - ^neutron/locale/.*$
       - ^neutron/tests/unit/.*$
+      - ^neutron/tests/fullstack/.*
+      - ^neutron/tests/functional/.*
       - ^tools/.*$
       - ^tox.ini$
       - ^neutron/agent/linux/openvswitch_firewall/.*$
@@ -329,6 +355,7 @@
       <<: *openvswitch_vars_rocky
       devstack_localrc:
         USE_PYTHON3: True
+        ADVANCED_INSTANCE_TYPE: ds512M
     branches: ^(?!stable/rocky).*$
     irrelevant-files: *iptables_hybrid_irrelevant_files
 
@@ -351,6 +378,13 @@
         Q_AGENT: linuxbridge
         NETWORK_API_EXTENSIONS: "{{ network_api_extensions | join(',') }}"
         TEMPEST_PLUGINS: /opt/stack/neutron-tempest-plugin
+        # NOTE(slaweq) some tests are not running fine with ubuntu minimal on
+        # Rocky
+        IMAGE_URLS: https://cloud-images.ubuntu.com/releases/bionic/release/ubuntu-18.04-server-cloudimg-amd64.img
+        ADVANCED_IMAGE_NAME: ubuntu-18.04-server-cloudimg-amd64
+        ADVANCED_INSTANCE_TYPE: ds512M
+        ADVANCED_INSTANCE_USER: ubuntu
+        CUSTOMIZE_IMAGE: false
       devstack_local_conf:
         post-config:
           $NEUTRON_CONF:
@@ -376,10 +410,7 @@
             neutron_plugin_options:
               available_type_drivers: flat,vlan,local,vxlan
               q_agent: None
-      # NOTE(bcafarel): newer tests, unstable on rocky branch
-      tempest_black_regex: "\
-          (^neutron_tempest_plugin.scenario.test_port_forwardings.PortForwardingTestJSON.test_port_forwarding_to_2_servers)|\
-          (^neutron_tempest_plugin.scenario.test_security_groups.NetworkSecGroupTest.test_multiple_ports_portrange_remote)"
+      tempest_black_regex: *rocky_tempest_exclude
     branches:
       - stable/rocky
 
@@ -402,6 +433,7 @@
         Q_AGENT: linuxbridge
         NETWORK_API_EXTENSIONS: "{{ network_api_extensions | join(',') }}"
         TEMPEST_PLUGINS: /opt/stack/neutron-tempest-plugin
+        ADVANCED_INSTANCE_TYPE: ds512M
     branches: ^(?!stable/rocky).*$
 
 - job:
@@ -432,6 +464,8 @@
         NETWORK_API_EXTENSIONS: "{{ (network_api_extensions_common + network_api_extensions_dvr) | join(',') }}"
         PHYSICAL_NETWORK: default
         CIRROS_VERSION: 0.5.1
+        DEFAULT_IMAGE_NAME: cirros-0.5.1-x86_64-uec
+        DEFAULT_IMAGE_FILE_NAME: cirros-0.5.1-x86_64-uec.tar.gz
         IMAGE_URLS: https://cloud-images.ubuntu.com/releases/bionic/release/ubuntu-18.04-server-cloudimg-amd64.img
         ADVANCED_IMAGE_NAME: ubuntu-18.04-server-cloudimg-amd64
         ADVANCED_INSTANCE_TYPE: ds512M
@@ -518,10 +552,7 @@
               l3_agent_mode: dvr_snat
               firewall_driver: openvswitch
       branch_override: stable/rocky
-      # NOTE(bcafarel): newer tests, unstable on rocky branch
-      tempest_black_regex: "\
-          (^neutron_tempest_plugin.scenario.test_port_forwardings.PortForwardingTestJSON.test_port_forwarding_to_2_servers)|\
-          (^neutron_tempest_plugin.scenario.test_security_groups.NetworkSecGroupTest.test_multiple_ports_portrange_remote)"
+      tempest_black_regex: *rocky_tempest_exclude
     branches:
       - stable/rocky
     group-vars: &multinode_scenario_group_vars_rocky
@@ -608,6 +639,10 @@
       devstack_localrc:
         USE_PYTHON3: false
         TEMPEST_PLUGINS: '"/opt/stack/designate-tempest-plugin /opt/stack/neutron-tempest-plugin"'
+        ADVANCED_INSTANCE_TYPE: ds512M
+      # NOTE(bcafarel): filtering out unstable tests or tests with known
+      # issues in the used pinned version for this EM branch
+      tempest_black_regex: "(^neutron_tempest_plugin.scenario.test_dns_integration.DNSIntegrationAdminTests.test_port_on_special_network)"
     branches:
       - stable/rocky
 

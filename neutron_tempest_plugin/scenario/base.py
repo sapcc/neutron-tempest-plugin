@@ -222,18 +222,12 @@ class BaseTempestTestCase(base_api.BaseNetworkTest):
 
         error_msg = (
             "Router %s is not active on any of the L3 agents" % router_id)
-        # NOTE(slaweq): Due to bug
-        # the bug https://launchpad.net/bugs/1923633 let's temporary skip test
-        # if router will not become active on any of the L3 agents in 600
-        # seconds. When that bug will be fixed, we should get rid of that skip
-        # and lower timeout to e.g. 300 seconds, or even less
-        try:
-            utils.wait_until_true(
-                _router_active_on_l3_agent,
-                timeout=600, sleep=5,
-                exception=lib_exc.TimeoutException(error_msg))
-        except lib_exc.TimeoutException:
-            raise cls.skipException("Bug 1923633. %s" % error_msg)
+        # NOTE(slaweq): timeout here should be lower for sure, but due to
+        # the bug https://launchpad.net/bugs/1923633 let's wait even 10
+        # minutes until router will be active on some of the L3 agents
+        utils.wait_until_true(_router_active_on_l3_agent,
+                              timeout=600, sleep=5,
+                              exception=lib_exc.TimeoutException(error_msg))
 
     @classmethod
     def skip_if_no_extension_enabled_in_l3_agents(cls, extension):
@@ -373,7 +367,8 @@ class BaseTempestTestCase(base_api.BaseNetworkTest):
                                    should_succeed=True,
                                    nic=None, mtu=None, fragmentation=True,
                                    timeout=None, pattern=None,
-                                   forbid_packet_loss=False):
+                                   forbid_packet_loss=False,
+                                   check_response_ip=True):
         """check ping server via source ssh connection
 
         :param source: RemoteClient: an ssh connection from which to ping
@@ -386,6 +381,7 @@ class BaseTempestTestCase(base_api.BaseNetworkTest):
         :param timeout: Timeout for all ping packet(s) to succeed
         :param pattern: hex digits included in ICMP messages
         :param forbid_packet_loss: forbid or allow some lost packets
+        :param check_response_ip: check response ip
         :returns: boolean -- should_succeed == ping
         :returns: ping is false if ping failed
         """
@@ -428,7 +424,8 @@ class BaseTempestTestCase(base_api.BaseNetworkTest):
                 LOG.debug('Packet loss detected')
                 return not should_succeed
 
-            if validators.validate_ip_address(dest) is None:
+            if (check_response_ip and
+                    validators.validate_ip_address(dest) is None):
                 # Assert that the return traffic was from the correct
                 # source address.
                 from_source = 'from %s' % dest
@@ -442,13 +439,15 @@ class BaseTempestTestCase(base_api.BaseNetworkTest):
                                   nic=None, mtu=None, fragmentation=True,
                                   servers=None, timeout=None,
                                   ping_count=CONF.validation.ping_count,
-                                  pattern=None, forbid_packet_loss=False):
+                                  pattern=None, forbid_packet_loss=False,
+                                  check_response_ip=True):
         try:
             self.assertTrue(self._check_remote_connectivity(
                 source, dest, ping_count, should_succeed, nic, mtu,
                 fragmentation,
                 timeout=timeout, pattern=pattern,
-                forbid_packet_loss=forbid_packet_loss))
+                forbid_packet_loss=forbid_packet_loss,
+                check_response_ip=check_response_ip))
         except (lib_exc.SSHTimeout, ssh_exc.AuthenticationException) as ssh_e:
             LOG.debug(ssh_e)
             self._log_console_output(servers)
@@ -540,7 +539,7 @@ class BaseTempestTestCase(base_api.BaseNetworkTest):
             return False
 
         try:
-            utils.wait_until_true(system_booted, sleep=5)
+            utils.wait_until_true(system_booted, timeout=90, sleep=5)
         except utils.WaitTimeout:
             LOG.debug("No correct output in console of server %s found. "
                       "Guest operating system status can't be checked.",

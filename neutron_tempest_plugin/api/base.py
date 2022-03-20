@@ -118,6 +118,8 @@ class BaseNetworkTest(test.BaseTestCase):
         cls.routers = []
         cls.floating_ips = []
         cls.port_forwardings = []
+        cls.local_ips = []
+        cls.local_ip_associations = []
         cls.metering_labels = []
         cls.service_profiles = []
         cls.flavors = []
@@ -166,6 +168,15 @@ class BaseNetworkTest(test.BaseTestCase):
             # Clean up floating IPs
             for floating_ip in cls.floating_ips:
                 cls._try_delete_resource(cls.delete_floatingip, floating_ip)
+
+            # Clean up Local IP Associations
+            for association in cls.local_ip_associations:
+                cls._try_delete_resource(cls.delete_local_ip_association,
+                                         association)
+            # Clean up Local IPs
+            for local_ip in cls.local_ips:
+                cls._try_delete_resource(cls.delete_local_ip,
+                                         local_ip)
 
             # Clean up conntrack helpers
             for cth in cls.conntrack_helpers:
@@ -732,6 +743,98 @@ class BaseNetworkTest(test.BaseTestCase):
         client = client or pf.get('client') or cls.client
         client.delete_port_forwarding(pf['floatingip_id'], pf['id'])
 
+    def create_local_ip(cls, network_id=None,
+                        client=None, **kwargs):
+        """Creates a Local IP.
+
+        Create a Local IP and schedule it for later deletion.
+        If a client is passed, then it is used for deleting the IP too.
+
+        :param network_id: network ID where to create
+        By default this is 'CONF.network.public_network_id'.
+
+        :param client: network client to be used for creating and cleaning up
+        the Local IP.
+
+        :param **kwargs: additional creation parameters to be forwarded to
+        networking server.
+        """
+
+        client = client or cls.client
+        network_id = (network_id or
+                      cls.external_network_id)
+
+        local_ip = client.create_local_ip(network_id,
+                                          **kwargs)['local_ip']
+
+        # save client to be used later in cls.delete_local_ip
+        # for final cleanup
+        local_ip['client'] = client
+        cls.local_ips.append(local_ip)
+        return local_ip
+
+    @classmethod
+    def delete_local_ip(cls, local_ip, client=None):
+        """Delete Local IP
+
+        :param client: Client to be used
+        If client is not given it will use the client used to create
+        the Local IP, or cls.client if unknown.
+        """
+
+        client = client or local_ip.get('client') or cls.client
+        client.delete_local_ip(local_ip['id'])
+
+    @classmethod
+    def create_local_ip_association(cls, local_ip_id, fixed_port_id,
+                                    fixed_ip_address=None, client=None):
+        """Creates a Local IP association.
+
+        Create a Local IP Association and schedule it for later deletion.
+        If a client is passed, then it is used for deleting the association
+        too.
+
+        :param local_ip_id: The ID of the Local IP.
+
+        :param fixed_port_id: The ID of the Neutron port
+        to be associated with the Local IP
+
+        :param fixed_ip_address: The fixed IPv4 address of the Neutron
+        port to be associated with the Local IP
+
+        :param client: network client to be used for creating and cleaning up
+        the Local IP Association.
+        """
+
+        client = client or cls.client
+
+        association = client.create_local_ip_association(
+            local_ip_id, fixed_port_id,
+            fixed_ip_address)['port_association']
+
+        # save ID of Local IP  for final cleanup
+        association['local_ip_id'] = local_ip_id
+
+        # save client to be used later in
+        # cls.delete_local_ip_association for final cleanup
+        association['client'] = client
+        cls.local_ip_associations.append(association)
+        return association
+
+    @classmethod
+    def delete_local_ip_association(cls, association, client=None):
+
+        """Delete Local IP Association
+
+        :param client: Client to be used
+        If client is not given it will use the client used to create
+        the local IP association, or cls.client if unknown.
+        """
+
+        client = client or association.get('client') or cls.client
+        client.delete_local_ip_association(association['local_ip_id'],
+                                           association['fixed_port_id'])
+
     @classmethod
     def create_router_interface(cls, router_id, subnet_id):
         """Wrapper utility that returns a router interface."""
@@ -761,27 +864,6 @@ class BaseNetworkTest(test.BaseTestCase):
         qos_policy = body['policy']
         cls.qos_policies.append(qos_policy)
         return qos_policy
-
-    @classmethod
-    def create_qos_bandwidth_limit_rule(cls, policy_id, max_kbps,
-                                        max_burst_kbps,
-                                        direction=const.EGRESS_DIRECTION):
-        """Wrapper utility that returns a test QoS bandwidth limit rule."""
-        body = cls.admin_client.create_bandwidth_limit_rule(
-            policy_id, max_kbps, max_burst_kbps, direction)
-        qos_rule = body['bandwidth_limit_rule']
-        cls.qos_rules.append(qos_rule)
-        return qos_rule
-
-    @classmethod
-    def create_qos_minimum_bandwidth_rule(cls, policy_id, min_kbps,
-                                          direction=const.EGRESS_DIRECTION):
-        """Wrapper utility that creates and returns a QoS min bw rule."""
-        body = cls.admin_client.create_minimum_bandwidth_rule(
-            policy_id, direction, min_kbps)
-        qos_rule = body['minimum_bandwidth_rule']
-        cls.qos_rules.append(qos_rule)
-        return qos_rule
 
     @classmethod
     def create_qos_dscp_marking_rule(cls, policy_id, dscp_mark):
@@ -1126,12 +1208,13 @@ class BaseAdminNetworkTest(BaseNetworkTest):
                    target_id=None, event='ALL', enabled=True):
         """Wrapper utility that returns a test log object."""
         log_args = {'name': name,
-                    'description': description,
                     'resource_type': resource_type,
                     'resource_id': resource_id,
                     'target_id': target_id,
                     'event': event,
                     'enabled': enabled}
+        if description:
+            log_args['description'] = description
         body = cls.admin_client.create_log(**log_args)
         log_object = body['log']
         cls.log_objects.append(log_object)

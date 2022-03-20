@@ -18,6 +18,7 @@ import time
 from neutron_lib import constants as lib_constants
 from neutron_lib.services.qos import constants as qos_consts
 from neutron_lib.utils import test
+from oslo_log import log
 from tempest.common import utils
 from tempest.common import waiters
 from tempest.lib.common.utils import data_utils
@@ -37,6 +38,7 @@ from neutron_tempest_plugin.scenario import test_qos
 
 
 CONF = config.CONF
+LOG = log.getLogger(__name__)
 
 
 load_tests = testscenarios.load_tests_apply_scenarios
@@ -244,11 +246,17 @@ class FloatingIPPortDetailsTest(FloatingIpTestCasesMixin,
             self._check_port_details(
                 fip, port, status=lib_constants.PORT_STATUS_ACTIVE,
                 device_id=server['server']['id'], device_owner='compute:nova')
+            LOG.debug('Port check for server %s and FIP %s finished, '
+                      'lets detach port %s from server!',
+                      server['server']['id'], fip['id'], port['id'])
 
             # detach the port from the server; this is a cast in the compute
             # API so we have to poll the port until the device_id is unset.
             self.delete_interface(server['server']['id'], port['id'])
             port = self._wait_for_port_detach(port['id'])
+            LOG.debug('Port %s has been detached from server %s, lets check '
+                      'the status of port in FIP %s details!',
+                      port['id'], server['server']['id'], fip['id'])
             fip = self._wait_for_fip_port_down(fip['id'])
             self._check_port_details(
                 fip, port, status=lib_constants.PORT_STATUS_DOWN,
@@ -323,6 +331,8 @@ class FloatingIPPortDetailsTest(FloatingIpTestCasesMixin,
                            (fip_id, status, timeout, port))
                 raise exceptions.TimeoutException(message)
 
+        LOG.debug('Port %s attached to FIP %s is down after %s!',
+                  fip.get("port_id"), fip_id, int(time.time()) - start)
         return fip
 
 
@@ -344,6 +354,8 @@ class FloatingIPQosTest(FloatingIpTestCasesMixin,
     def setup_clients(cls):
         super(FloatingIPQosTest, cls).setup_clients()
         cls.admin_client = cls.os_admin.network_client
+        cls.qos_bw_limit_rule_client = \
+            cls.os_admin.qos_limit_bandwidth_rules_client
 
     @decorators.idempotent_id('5eb48aea-eaba-4c20-8a6f-7740070a0aa3')
     def test_qos(self):
@@ -364,16 +376,19 @@ class FloatingIPQosTest(FloatingIpTestCasesMixin,
         ssh_client = self._create_ssh_client()
 
         # As admin user create a new QoS rules
-        self.os_admin.network_client.create_bandwidth_limit_rule(
-            policy_id, max_kbps=constants.LIMIT_KILO_BITS_PER_SECOND,
-            max_burst_kbps=constants.LIMIT_KILO_BYTES,
-            direction=lib_constants.INGRESS_DIRECTION)
-        self.os_admin.network_client.create_bandwidth_limit_rule(
-            policy_id, max_kbps=constants.LIMIT_KILO_BITS_PER_SECOND,
-            max_burst_kbps=constants.LIMIT_KILO_BYTES,
-            direction=lib_constants.EGRESS_DIRECTION)
+        rule_data = {'max_kbps': constants.LIMIT_KILO_BITS_PER_SECOND,
+                     'max_burst_kbps': constants.LIMIT_KILO_BYTES,
+                     'direction': lib_constants.INGRESS_DIRECTION}
+        self.qos_bw_limit_rule_client.create_limit_bandwidth_rule(
+             qos_policy_id=policy_id, **rule_data)
 
-        rules = self.os_admin.network_client.list_bandwidth_limit_rules(
+        rule_data = {'max_kbps': constants.LIMIT_KILO_BITS_PER_SECOND,
+                     'max_burst_kbps': constants.LIMIT_KILO_BYTES,
+                     'direction': lib_constants.EGRESS_DIRECTION}
+        self.qos_bw_limit_rule_client.create_limit_bandwidth_rule(
+             qos_policy_id=policy_id, **rule_data)
+
+        rules = self.qos_bw_limit_rule_client.list_limit_bandwidth_rules(
             policy_id)
         self.assertEqual(2, len(rules['bandwidth_limit_rules']))
 
@@ -404,11 +419,10 @@ class FloatingIPQosTest(FloatingIpTestCasesMixin,
 
         # As admin user update QoS rules
         for rule in rules['bandwidth_limit_rules']:
-            self.os_admin.network_client.update_bandwidth_limit_rule(
-                policy_id,
-                rule['id'],
-                max_kbps=constants.LIMIT_KILO_BITS_PER_SECOND * 2,
-                max_burst_kbps=constants.LIMIT_KILO_BITS_PER_SECOND * 2)
+            self.qos_bw_limit_rule_client.update_limit_bandwidth_rule(
+                policy_id, rule['id'],
+                **{'max_kbps': constants.LIMIT_KILO_BITS_PER_SECOND * 2,
+                   'max_burst_kbps': constants.LIMIT_KILO_BITS_PER_SECOND * 2})
 
         # Check that actual BW while downloading file
         # is as expected (Update BW)

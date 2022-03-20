@@ -13,7 +13,9 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from oslo_log import log
 from tempest.common import utils
+from tempest.lib.common.utils import data_utils
 from tempest.lib import decorators
 
 from neutron_tempest_plugin.common import ssh
@@ -21,9 +23,63 @@ from neutron_tempest_plugin import config
 from neutron_tempest_plugin.scenario import base
 
 CONF = config.CONF
+LOG = log.getLogger(__name__)
 
 
-class InternalDNSTest(base.BaseTempestTestCase):
+class InternalDNSBase(base.BaseTempestTestCase):
+    """Base class of useful resources and functionalities for test class."""
+
+    port_error_msg = ('Openstack command returned incorrect '
+                      'hostname value in port.')
+    ssh_error_msg = ('Remote shell command returned incorrect hostname value '
+                     "(command: 'hostname' OR 'cat /etc/hostname').")
+
+    @staticmethod
+    def _rand_name(name):
+        """'data_utils.rand_name' wrapper, show name related to test suite."""
+        return data_utils.rand_name(f'internal-dns-test-{name}')
+
+    @classmethod
+    def resource_setup(cls):
+        super(InternalDNSBase, cls).resource_setup()
+        cls.router = cls.create_router_by_client()
+        cls.keypair = cls.create_keypair(
+            name=cls._rand_name('shared-keypair'))
+        cls.secgroup = cls.create_security_group(
+            name=cls._rand_name('shared-secgroup'))
+        cls.security_groups.append(cls.secgroup)
+        cls.create_loginable_secgroup_rule(
+            secgroup_id=cls.secgroup['id'])
+        cls.vm_kwargs = {
+            'flavor_ref': CONF.compute.flavor_ref,
+            'image_ref': CONF.compute.image_ref,
+            'key_name': cls.keypair['name'],
+            'security_groups': [{'name': cls.secgroup['name']}]
+        }
+
+    def _create_ssh_client(self, ip_addr):
+        return ssh.Client(ip_addr,
+                          CONF.validation.image_ssh_user,
+                          pkey=self.keypair['private_key'])
+
+    def _validate_port_dns_details(self, checked_hostname, checked_port):
+        """Validates reused objects for correct dns values in tests."""
+        dns_details = checked_port['dns_assignment'][0]
+        self.assertEqual(checked_hostname, checked_port['dns_name'],
+                         self.port_error_msg)
+        self.assertEqual(checked_hostname, dns_details['hostname'],
+                         self.port_error_msg)
+        self.assertIn(checked_hostname, dns_details['fqdn'],
+                      self.port_error_msg)
+
+    def _validate_ssh_dns_details(self, checked_hostname, ssh_client):
+        """Validates correct dns values returned from ssh command in tests."""
+        ssh_output = ssh_client.get_hostname()
+        self.assertIn(checked_hostname, ssh_output, self.ssh_error_msg)
+
+
+class InternalDNSTest(InternalDNSBase):
+    """Tests internal DNS capabilities."""
     credentials = ['primary', 'admin']
 
     @utils.requires_ext(extension="dns-integration", service="network")
@@ -52,8 +108,6 @@ class InternalDNSTest(base.BaseTempestTestCase):
             security_groups=[
                 {'name': self.security_groups[-1]['name']}],
             name='leia')
-        self.wait_for_server_active(leia['server'])
-        self.wait_for_guest_os_ready(leia['server'])
 
         ssh_client = ssh.Client(
             self.fip['floating_ip_address'],
@@ -82,3 +136,49 @@ class InternalDNSTest(base.BaseTempestTestCase):
                                        servers=[self.server, leia])
         self.check_remote_connectivity(ssh_client, 'leia.openstackgate.local',
                                        servers=[self.server, leia])
+
+    @utils.requires_ext(extension="dns-integration", service="network")
+    @decorators.idempotent_id('db5e612f-f17f-4974-b5f1-9fe89f4a6fc9')
+    def test_create_and_update_port_with_dns_name(self):
+        """Test creation of port with correct internal dns-name (hostname)."""
+
+        # 1) Create resources: network, subnet, etc.
+        # 2) Create a port with wrong dns-name (not as VM name).
+        # 3) Verify that wrong port initial dns-name.
+        #    was queried from openstack API.
+        # 4) Update the port with correct dns-name (as VM name).
+        # 5) Boot a VM with corrected predefined port.
+        # 6) Verify that correct port dns-name
+        #    was queried from openstack API.
+        # 7) Validate hostname configured on VM is same as VM's name.
+
+        # NOTE: VM's hostname has to be the same as VM's name
+        #       when a VM is created, it is a known limitation.
+        #       Therefore VM's dns-name/hostname is checked to be as VM's name.
+
+        vm_correct_name = self._rand_name('vm')
+        vm_wrong_name = self._rand_name('bazinga')
+        # create resources
+        network = self.create_network(name=self._rand_name('network'))
+        subnet = self.create_subnet(network, name=self._rand_name('subnet'))
+        self.create_router_interface(self.router['id'], subnet['id'])
+        # create port with wrong dns-name (not as VM name)
+        dns_port = self.create_port(network,
+                                    dns_name=vm_wrong_name,
+                                    security_groups=[self.secgroup['id']],
+                                    name=self._rand_name('port'))
+        # validate dns port with wrong initial hostname from API
+        self._validate_port_dns_details(vm_wrong_name, dns_port)
+        # update port with correct dns-name (as VM name)
+        dns_port = self.update_port(dns_port, dns_name=vm_correct_name)
+        # create VM with correct predefined dns-name on port
+        vm_1 = self.create_server(name=vm_correct_name,
+                                  networks=[{'port': dns_port['id']}],
+                                  **self.vm_kwargs)
+        # validate dns port with correct changed hostname using API
+        self._validate_port_dns_details(vm_correct_name, dns_port)
+        # validate hostname configured on VM is same as VM's name.
+        vm_1['fip'] = self.create_floatingip(port=dns_port)
+        vm_1['ssh_client'] = self._create_ssh_client(
+            vm_1['fip']['floating_ip_address'])
+        self._validate_ssh_dns_details(vm_correct_name, vm_1['ssh_client'])

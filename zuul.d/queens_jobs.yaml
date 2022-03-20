@@ -75,6 +75,7 @@
         - standard-attr-timestamp
         - standard-attr-tag
         - subnet_allocation
+        - subnet-service-types
         - trunk
         - trunk-details
       network_api_extensions_tempest:
@@ -85,6 +86,8 @@
         NEUTRON_DEPLOY_MOD_WSGI: false
         USE_PYTHON3: false
         CIRROS_VERSION: 0.3.5
+        DEFAULT_IMAGE_NAME: cirros-0.3.5-x86_64-uec
+        DEFAULT_IMAGE_FILE_NAME: cirros-0.3.5-x86_64-uec.tar.gz
         NETWORK_API_EXTENSIONS: "{{ (network_api_extensions_common + network_api_extensions_tempest) | join(',') }}"
         TEMPEST_PLUGINS: /opt/stack/neutron-tempest-plugin
         Q_AGENT: openvswitch
@@ -138,8 +141,17 @@
       devstack_localrc:
         USE_PYTHON3: false
         CIRROS_VERSION: 0.3.5
+        DEFAULT_IMAGE_NAME: cirros-0.3.5-x86_64-uec
+        DEFAULT_IMAGE_FILE_NAME: cirros-0.3.5-x86_64-uec.tar.gz
         NETWORK_API_EXTENSIONS: "{{ network_api_extensions | join(',') }}"
         TEMPEST_PLUGINS: /opt/stack/neutron-tempest-plugin
+        # NOTE(slaweq) some tests are not running fine with ubuntu minimal on
+        # Queens
+        IMAGE_URLS: https://cloud-images.ubuntu.com/releases/bionic/release/ubuntu-18.04-server-cloudimg-amd64.img
+        ADVANCED_IMAGE_NAME: ubuntu-18.04-server-cloudimg-amd64
+        ADVANCED_INSTANCE_TYPE: ds512M
+        ADVANCED_INSTANCE_USER: ubuntu
+        CUSTOMIZE_IMAGE: false
 
 - job:
     name: neutron-tempest-plugin-scenario-linuxbridge-queens
@@ -165,9 +177,18 @@
       devstack_localrc:
         USE_PYTHON3: false
         CIRROS_VERSION: 0.3.5
+        DEFAULT_IMAGE_NAME: cirros-0.3.5-x86_64-uec
+        DEFAULT_IMAGE_FILE_NAME: cirros-0.3.5-x86_64-uec.tar.gz
         Q_AGENT: linuxbridge
         NETWORK_API_EXTENSIONS: "{{ network_api_extensions | join(',') }}"
         TEMPEST_PLUGINS: /opt/stack/neutron-tempest-plugin
+        # NOTE(slaweq) some tests are not running fine with ubuntu minimal on
+        # Queens
+        IMAGE_URLS: https://cloud-images.ubuntu.com/releases/bionic/release/ubuntu-18.04-server-cloudimg-amd64.img
+        ADVANCED_IMAGE_NAME: ubuntu-18.04-server-cloudimg-amd64
+        ADVANCED_INSTANCE_TYPE: ds512M
+        ADVANCED_INSTANCE_USER: ubuntu
+        CUSTOMIZE_IMAGE: false
       devstack_local_conf:
         post-config:
           $NEUTRON_CONF:
@@ -217,6 +238,8 @@
       devstack_localrc:
         USE_PYTHON3: false
         CIRROS_VERSION: 0.3.5
+        DEFAULT_IMAGE_NAME: cirros-0.3.5-x86_64-uec
+        DEFAULT_IMAGE_FILE_NAME: cirros-0.3.5-x86_64-uec.tar.gz
         TEMPEST_PLUGINS: /opt/stack/neutron-tempest-plugin
 
 - job:
@@ -241,4 +264,7 @@
       devstack_localrc:
         USE_PYTHON3: false
         CIRROS_VERSION: 0.3.5
+        DEFAULT_IMAGE_NAME: cirros-0.3.5-x86_64-uec
+        DEFAULT_IMAGE_FILE_NAME: cirros-0.3.5-x86_64-uec.tar.gz
         TEMPEST_PLUGINS: '"/opt/stack/designate-tempest-plugin /opt/stack/neutron-tempest-plugin"'
+        ADVANCED_INSTANCE_TYPE: ds512M

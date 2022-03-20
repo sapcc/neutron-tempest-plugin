@@ -20,6 +20,7 @@ from tempest.common import utils as tempest_utils
 from tempest.lib.common.utils import data_utils
 from tempest.lib import decorators
 from tempest.lib import exceptions as lib_exc
+import testtools
 
 from neutron_tempest_plugin.common import ip
 from neutron_tempest_plugin.common import ssh
@@ -32,11 +33,15 @@ CONF = config.CONF
 LOG = log.getLogger(__name__)
 
 
-def turn_nic6_on(ssh, ipv6_port):
+def turn_nic6_on(ssh, ipv6_port, config_nic=True):
     """Turns the IPv6 vNIC on
 
     Required because guest images usually set only the first vNIC on boot.
     Searches for the IPv6 vNIC's MAC and brings it up.
+    # NOTE(slaweq): on RHEL based OS ifcfg file for new interface is
+    # needed to make IPv6 working on it, so if
+    # /etc/sysconfig/network-scripts directory exists ifcfg-%(nic)s file
+    # should be added in it
 
     @param ssh: RemoteClient ssh instance to server
     @param ipv6_port: port from IPv6 network attached to the server
@@ -44,29 +49,61 @@ def turn_nic6_on(ssh, ipv6_port):
     ip_command = ip.IPCommand(ssh)
     nic = ip_command.get_nic_name_by_mac(ipv6_port['mac_address'])
 
-    # NOTE(slaweq): on RHEL based OS ifcfg file for new interface is
-    # needed to make IPv6 working on it, so if
-    # /etc/sysconfig/network-scripts directory exists ifcfg-%(nic)s file
-    # should be added in it
-    if sysconfig_network_scripts_dir_exists(ssh):
+    if config_nic:
         try:
-            ssh.execute_script(
-                'echo -e "DEVICE=%(nic)s\\nNAME=%(nic)s\\nIPV6INIT=yes" | '
-                'tee /etc/sysconfig/network-scripts/ifcfg-%(nic)s; '
-                'nmcli connection reload' % {'nic': nic},
-                become_root=True)
-            ssh.execute_script('nmcli connection up %s' % nic,
-                               become_root=True)
+            if sysconfig_network_scripts_dir_exists(ssh):
+                ssh.execute_script(
+                    'echo -e "DEVICE=%(nic)s\\nNAME=%(nic)s\\nIPV6INIT=yes" | '
+                    'tee /etc/sysconfig/network-scripts/ifcfg-%(nic)s; '
+                    % {'nic': nic}, become_root=True)
+            if nmcli_command_exists(ssh):
+                ssh.execute_script('nmcli connection reload %s' % nic,
+                                   become_root=True)
+                ssh.execute_script('nmcli con mod %s ipv6.addr-gen-mode eui64'
+                                   % nic, become_root=True)
+                ssh.execute_script('nmcli connection up %s' % nic,
+                                   become_root=True)
+
         except lib_exc.SSHExecCommandFailed as e:
             # NOTE(slaweq): Sometimes it can happen that this SSH command
             # will fail because of some error from network manager in
             # guest os.
             # But even then doing ip link set up below is fine and
             # IP address should be configured properly.
-            LOG.debug("Error during restarting %(nic)s interface on "
-                      "instance. Error message: %(error)s",
-                      {'nic': nic, 'error': e})
+            LOG.debug("Error creating NetworkManager profile. "
+                      "Error message: %(error)s",
+                      {'error': e})
+
     ip_command.set_link(nic, "up")
+
+
+def configure_eth_connection_profile_NM(ssh):
+    """Prepare a Network manager profile for ipv6 port
+
+    By default the NetworkManager uses IPv6 privacy
+    format it isn't supported by neutron then we create
+    a ether profile with eui64 supported format
+
+    @param ssh: RemoteClient ssh instance to server
+    """
+    # NOTE(ccamposr): on RHEL based OS we need a ether profile with
+    # eui64 format
+    if nmcli_command_exists(ssh):
+        try:
+            ssh.execute_script('nmcli connection add type ethernet con-name '
+                               'ether ifname "*"', become_root=True)
+            ssh.execute_script('nmcli con mod ether ipv6.addr-gen-mode eui64',
+                               become_root=True)
+
+        except lib_exc.SSHExecCommandFailed as e:
+            # NOTE(slaweq): Sometimes it can happen that this SSH command
+            # will fail because of some error from network manager in
+            # guest os.
+            # But even then doing ip link set up below is fine and
+            # IP address should be configured properly.
+            LOG.debug("Error creating NetworkManager profile. "
+                      "Error message: %(error)s",
+                      {'error': e})
 
 
 def sysconfig_network_scripts_dir_exists(ssh):
@@ -74,11 +111,22 @@ def sysconfig_network_scripts_dir_exists(ssh):
         'test -d /etc/sysconfig/network-scripts/ || echo "False"')
 
 
+def nmcli_command_exists(ssh):
+    return "False" not in ssh.execute_script(
+        'if ! type nmcli > /dev/null ; then echo "False"; fi')
+
+
 class IPv6Test(base.BaseTempestTestCase):
     credentials = ['primary', 'admin']
 
     ipv6_ra_mode = 'slaac'
     ipv6_address_mode = 'slaac'
+
+    @classmethod
+    def skip_checks(cls):
+        super(IPv6Test, cls).skip_checks()
+        if not CONF.network_feature_enabled.ipv6:
+            raise cls.skipException("IPv6 is not enabled")
 
     @classmethod
     @tempest_utils.requires_ext(extension="router", service="network")
@@ -109,23 +157,44 @@ class IPv6Test(base.BaseTempestTestCase):
                 if expected_address in ip_address:
                     return True
             return False
-
+        # Set NIC with IPv6 to be UP and wait until IPv6 address
+        # will be configured on this NIC
+        turn_nic6_on(ssh_client, ipv6_port, False)
+        # And check if IPv6 address will be properly configured
+        # on this NIC
         try:
-            # Set NIC with IPv6 to be UP and wait until IPv6 address will be
-            # configured on this NIC
-            turn_nic6_on(ssh_client, ipv6_port)
-            # And check if IPv6 address will be properly configured on this NIC
             utils.wait_until_true(
                 lambda: guest_has_address(ipv6_address),
-                timeout=120,
-                exception=RuntimeError(
-                    "Timed out waiting for IP address {!r} to be configured "
-                    "in the VM {!r}.".format(ipv6_address, vm['id'])))
-        except (lib_exc.SSHTimeout, ssh_exc.AuthenticationException) as ssh_e:
+                timeout=60)
+        except utils.WaitTimeout:
+            LOG.debug('Timeout without NM configuration')
+        except (lib_exc.SSHTimeout,
+                ssh_exc.AuthenticationException) as ssh_e:
             LOG.debug(ssh_e)
             self._log_console_output([vm])
             self._log_local_network_status()
             raise
+
+        if not guest_has_address(ipv6_address):
+            try:
+                # Set NIC with IPv6 to be UP and wait until IPv6 address
+                # will be configured on this NIC
+                turn_nic6_on(ssh_client, ipv6_port)
+                # And check if IPv6 address will be properly configured
+                # on this NIC
+                utils.wait_until_true(
+                    lambda: guest_has_address(ipv6_address),
+                    timeout=90,
+                    exception=RuntimeError(
+                        "Timed out waiting for IP address {!r} to be "
+                        "configured in the VM {!r}.".format(ipv6_address,
+                        vm['id'])))
+            except (lib_exc.SSHTimeout,
+                    ssh_exc.AuthenticationException) as ssh_e:
+                LOG.debug(ssh_e)
+                self._log_console_output([vm])
+                self._log_local_network_status()
+                raise
 
     def _test_ipv6_hotplug(self, ra_mode, address_mode):
         ipv6_networks = [self.create_network() for _ in range(2)]
@@ -165,6 +234,8 @@ class IPv6Test(base.BaseTempestTestCase):
 
         # And plug VM to the second IPv6 network
         ipv6_port = self.create_port(ipv6_networks[1])
+        # Add NetworkManager profile with ipv6 eui64 format to guest OS
+        configure_eth_connection_profile_NM(ssh_client)
         self.create_interface(vm['id'], ipv6_port['id'])
         ip.wait_for_interface_status(
             self.os_primary.interfaces_client, vm['id'],
@@ -172,10 +243,14 @@ class IPv6Test(base.BaseTempestTestCase):
             ssh_client=ssh_client, mac_address=ipv6_port['mac_address'])
         self._test_ipv6_address_configured(ssh_client, vm, ipv6_port)
 
+    @testtools.skipUnless(CONF.network_feature_enabled.ipv6_subnet_attributes,
+                          "DHCPv6 attributes are not enabled.")
     @decorators.idempotent_id('b13e5408-5250-4a42-8e46-6996ce613e91')
     def test_ipv6_hotplug_slaac(self):
         self._test_ipv6_hotplug("slaac", "slaac")
 
+    @testtools.skipUnless(CONF.network_feature_enabled.ipv6_subnet_attributes,
+                          "DHCPv6 attributes are not enabled.")
     @decorators.idempotent_id('9aaedbc4-986d-42d5-9177-3e721728e7e0')
     def test_ipv6_hotplug_dhcpv6stateless(self):
         self._test_ipv6_hotplug("dhcpv6-stateless", "dhcpv6-stateless")

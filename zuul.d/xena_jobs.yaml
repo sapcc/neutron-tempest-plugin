@@ -1,7 +1,7 @@
 - job:
-    name: neutron-tempest-plugin-api-wallaby
+    name: neutron-tempest-plugin-api-xena
     parent: neutron-tempest-plugin-api
-    override-checkout: stable/wallaby
+    override-checkout: stable/xena
     vars:
       # TODO(slaweq): find a way to put this list of extensions in
       # neutron repository and keep it different per branch,
@@ -18,6 +18,7 @@
         - dhcp_agent_scheduler
         - dns-domain-ports
         - dns-integration
+        - dns-integration-domain-keywords
         - empty-string-filtering
         - expose-port-forwarding-in-fip
         - expose-l3-conntrack-helper
@@ -45,6 +46,7 @@
         - network_availability_zone
         - network-segment-range
         - pagination
+        - port-device-profile
         - port-resource-request
         - port-mac-address-regenerate
         - port-security
@@ -88,11 +90,11 @@
         - ipv6_metadata
 
 - job:
-    name: neutron-tempest-plugin-scenario-openvswitch-wallaby
+    name: neutron-tempest-plugin-scenario-openvswitch-xena
     parent: neutron-tempest-plugin-scenario-openvswitch
-    override-checkout: stable/wallaby
+    override-checkout: stable/xena
     vars:
-      branch_override: stable/wallaby
+      branch_override: stable/xena
       network_api_extensions: *api_extensions
       network_available_features: *available_features
       devstack_localrc:
@@ -104,11 +106,11 @@
               available_features: "{{ network_available_features | join(',') }}"
 
 - job:
-    name: neutron-tempest-plugin-scenario-openvswitch-iptables_hybrid-wallaby
+    name: neutron-tempest-plugin-scenario-openvswitch-iptables_hybrid-xena
     parent: neutron-tempest-plugin-scenario-openvswitch-iptables_hybrid
-    override-checkout: stable-wallaby
+    override-checkout: stable-xena
     vars:
-      branch_override: stable-wallaby
+      branch_override: stable-xena
       network_api_extensions: *api_extensions
       network_available_features: *available_features
       devstack_localrc:
@@ -120,11 +122,11 @@
               available_features: "{{ network_available_features | join(',') }}"
 
 - job:
-    name: neutron-tempest-plugin-scenario-linuxbridge-wallaby
+    name: neutron-tempest-plugin-scenario-linuxbridge-xena
     parent: neutron-tempest-plugin-scenario-linuxbridge
-    override-checkout: stable/wallaby
+    override-checkout: stable/xena
     vars:
-      branch_override: stable/wallaby
+      branch_override: stable/xena
       network_api_extensions: *api_extensions
       network_available_features: *available_features
       devstack_localrc:
@@ -136,11 +138,11 @@
               available_features: "{{ network_available_features | join(',') }}"
 
 - job:
-    name: neutron-tempest-plugin-scenario-ovn-wallaby
+    name: neutron-tempest-plugin-scenario-ovn-xena
     parent: neutron-tempest-plugin-scenario-ovn
-    override-checkout: stable/wallaby
+    override-checkout: stable/xena
     vars:
-      branch_override: stable/wallaby
+      branch_override: stable/xena
       network_api_extensions: *api_extensions
       devstack_localrc:
         NETWORK_API_EXTENSIONS: "{{ network_api_extensions | join(',') }}"
@@ -151,49 +153,57 @@
               available_features: ""
 
 - job:
-    name: neutron-tempest-plugin-dvr-multinode-scenario-wallaby
+    name: neutron-tempest-plugin-dvr-multinode-scenario-xena
     parent: neutron-tempest-plugin-dvr-multinode-scenario
-    override-checkout: stable/wallaby
+    override-checkout: stable/xena
     vars:
       network_api_extensions_common: *api_extensions
-      branch_override: stable/wallaby
+      branch_override: stable/xena
 
 - job:
-    name: neutron-tempest-plugin-designate-scenario-wallaby
+    name: neutron-tempest-plugin-designate-scenario-xena
     parent: neutron-tempest-plugin-designate-scenario
-    override-checkout: stable/wallaby
+    override-checkout: stable/xena
     vars:
-      branch_override: stable/wallaby
+      branch_override: stable/xena
       network_api_extensions_common: *api_extensions
 
 - job:
-    name: neutron-tempest-plugin-sfc-wallaby
+    name: neutron-tempest-plugin-sfc-xena
     parent: neutron-tempest-plugin-sfc
-    override-checkout: stable/wallaby
+    override-checkout: stable/xena
     vars:
-      branch_override: stable/wallaby
+      branch_override: stable/xena
       network_api_extensions_common: *api_extensions
 
 - job:
-    name: neutron-tempest-plugin-bgpvpn-bagpipe-wallaby
+    name: neutron-tempest-plugin-bgpvpn-bagpipe-xena
     parent: neutron-tempest-plugin-bgpvpn-bagpipe
-    override-checkout: stable/wallaby
+    override-checkout: stable/xena
     vars:
-      branch_override: stable/wallaby
+      branch_override: stable/xena
       network_api_extensions: *api_extensions
 
 - job:
-    name: neutron-tempest-plugin-dynamic-routing-wallaby
+    name: neutron-tempest-plugin-dynamic-routing-xena
     parent: neutron-tempest-plugin-dynamic-routing
-    override-checkout: stable/wallaby
+    override-checkout: stable/xena
     vars:
-      branch_override: stable/wallaby
+      branch_override: stable/xena
       network_api_extensions_common: *api_extensions
 
 - job:
-    name: neutron-tempest-plugin-vpnaas-wallaby
+    name: neutron-tempest-plugin-vpnaas-xena
     parent: neutron-tempest-plugin-vpnaas
-    override-checkout: stable/wallaby
+    override-checkout: stable/xena
     vars:
-      branch_override: stable/wallaby
+      branch_override: stable/xena
+      network_api_extensions_common: *api_extensions
+
+- job:
+    name: neutron-tempest-plugin-tap-as-a-service-xena
+    parent: neutron-tempest-plugin-tap-as-a-service
+    override-checkout: stable/xena
+    vars:
+      branch_override: stable/xena
       network_api_extensions_common: *api_extensions
