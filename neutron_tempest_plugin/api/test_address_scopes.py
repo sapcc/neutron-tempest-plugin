@@ -198,7 +198,7 @@ class RbacAddressScopeTest(AddressScopeTestBase):
         a_s = self._create_address_scope(ip_version=4)
         self.admin_client.create_rbac_policy(
             object_type='address_scope', object_id=a_s['id'],
-            action='access_as_shared', target_tenant=self.client2.tenant_id)
+            action='access_as_shared', target_tenant=self.client2.project_id)
         field_args = (('id',), ('id', 'action'), ('object_type', 'object_id'),
                       ('project_id', 'target_tenant'))
         for fields in field_args:
@@ -208,7 +208,7 @@ class RbacAddressScopeTest(AddressScopeTestBase):
     @decorators.idempotent_id('19cbd62e-c6c3-4495-98b9-b9c6c6c9c127')
     def test_rbac_policy_show(self):
         res = self._make_admin_as_shared_to_project_id(
-            self.client.tenant_id)
+            self.client.project_id)
         p1 = res['rbac_policy']
         p2 = self.admin_client.create_rbac_policy(
             object_type='address_scope',
