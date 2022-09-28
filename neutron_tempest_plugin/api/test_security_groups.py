@@ -486,11 +486,11 @@ class RbacSharedSecurityGroupTest(base.BaseAdminNetworkTest):
     @decorators.idempotent_id('2a41eb8f-2a35-11e9-bae9-acde48001122')
     def test_policy_target_update(self):
         res = self._make_admin_sg_shared_to_project_id(
-            self.client.tenant_id)
+            self.client.project_id)
         # change to client2
         update_res = self.admin_client.update_rbac_policy(
-                res['rbac_policy']['id'], target_tenant=self.client2.tenant_id)
-        self.assertEqual(self.client2.tenant_id,
+                res['rbac_policy']['id'], target_tenant=self.client2.project_id)
+        self.assertEqual(self.client2.project_id,
                          update_res['rbac_policy']['target_tenant'])
         # make sure everything else stayed the same
         res['rbac_policy'].pop('target_tenant')
@@ -500,7 +500,7 @@ class RbacSharedSecurityGroupTest(base.BaseAdminNetworkTest):
     @decorators.idempotent_id('2a619a8a-2a35-11e9-90d9-acde48001122')
     def test_port_presence_prevents_policy_rbac_policy_deletion(self):
         res = self._make_admin_sg_shared_to_project_id(
-            self.client2.tenant_id)
+            self.client2.project_id)
         sg_id = res['security_group']['id']
         net = self.create_network(client=self.client2)
         port = self.client2.create_port(
@@ -540,7 +540,7 @@ class RbacSharedSecurityGroupTest(base.BaseAdminNetworkTest):
         sg = self._create_security_group()
         self.admin_client.create_rbac_policy(
             object_type='security_group', object_id=sg['id'],
-            action='access_as_shared', target_tenant=self.client2.tenant_id)
+            action='access_as_shared', target_tenant=self.client2.project_id)
         field_args = (('id',), ('id', 'action'), ('object_type', 'object_id'),
                       ('project_id', 'target_tenant'))
         for fields in field_args:
@@ -550,7 +550,7 @@ class RbacSharedSecurityGroupTest(base.BaseAdminNetworkTest):
     @decorators.idempotent_id('2abf8f9e-2a35-11e9-85f7-acde48001122')
     def test_rbac_policy_show(self):
         res = self._make_admin_sg_shared_to_project_id(
-            self.client.tenant_id)
+            self.client.project_id)
         p1 = res['rbac_policy']
         p2 = self.admin_client.create_rbac_policy(
             object_type='security_group',
@@ -569,11 +569,11 @@ class RbacSharedSecurityGroupTest(base.BaseAdminNetworkTest):
         rbac_pol1 = self.admin_client.create_rbac_policy(
             object_type='security_group', object_id=sg['id'],
             action='access_as_shared',
-            target_tenant=self.client2.tenant_id)['rbac_policy']
+            target_tenant=self.client2.project_id)['rbac_policy']
         rbac_pol2 = self.admin_client.create_rbac_policy(
             object_type='security_group', object_id=sg['id'],
             action='access_as_shared',
-            target_tenant=self.admin_client.tenant_id)['rbac_policy']
+            target_tenant=self.admin_client.project_id)['rbac_policy']
         res1 = self.admin_client.list_rbac_policies(id=rbac_pol1['id'])[
             'rbac_policies']
         res2 = self.admin_client.list_rbac_policies(id=rbac_pol2['id'])[
@@ -586,12 +586,12 @@ class RbacSharedSecurityGroupTest(base.BaseAdminNetworkTest):
     @decorators.idempotent_id('2aff3900-2a35-11e9-96b3-acde48001122')
     def test_regular_client_blocked_from_sharing_anothers_policy(self):
         sg = self._make_admin_sg_shared_to_project_id(
-            self.client.tenant_id)['security_group']
+            self.client.project_id)['security_group']
         with testtools.ExpectedException(exceptions.BadRequest):
             self.client.create_rbac_policy(
                 object_type='security_group', object_id=sg['id'],
                 action='access_as_shared',
-                target_tenant=self.client2.tenant_id)
+                target_tenant=self.client2.project_id)
 
         # make sure the rbac-policy is invisible to the tenant for which it's
         # being shared
