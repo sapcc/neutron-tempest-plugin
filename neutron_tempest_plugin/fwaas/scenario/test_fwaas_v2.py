@@ -130,9 +130,9 @@ class TestFWaaS_v2(base.FWaaSScenarioTest_V2):
         return resp
 
     def _create_network_subnet(self):
-        network = self._create_network()
+        network = self.create_network()
         subnet_kwargs = dict(network=network)
-        subnet = self._create_subnet(**subnet_kwargs)
+        subnet = self.create_subnet(**subnet_kwargs)
         return network, subnet
 
     def _create_test_server(self, network, security_group):
@@ -196,7 +196,7 @@ class TestFWaaS_v2(base.FWaaSScenarioTest_V2):
         resp['router_portid_2'] = router_portid_2
 
         # Create a VM on each of the network and assign it a floating IP.
-        security_group = self._create_security_group()
+        security_group = self.create_security_group()
         server1, private_key1, server_fixed_ip_1, server_floating_ip_1 = (
             self._create_test_server(network1, security_group))
         server2, private_key2, server_fixed_ip_2, server_floating_ip_2 = (

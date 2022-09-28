@@ -1,7 +1,53 @@
 - job:
-    name: neutron-tempest-plugin-api
-    parent: neutron-tempest-plugin-base
+    name: neutron-tempest-plugin-base
+    parent: devstack-tempest
+    abstract: true
+    description: |
+      Perform setup common to all Neutron tempest tests
+    roles:
+      - zuul: openstack/devstack
+    required-projects:
+      - openstack/neutron
+      - openstack/neutron-tempest-plugin
+      - openstack/tempest
     vars:
+      tempest_concurrency: 3  # out of 4
+      tox_envlist: all
+      # NOTE(slaweq): in case of some tests, which requires advanced image,
+      # default test timeout set to 1200 seconds may be not enough if job is
+      # run on slow node
+      tempest_test_timeout: 2400
+      tempest_test_regex: "\
+          (^neutron_tempest_plugin.api)|\
+          (^neutron_tempest_plugin.scenario)|\
+          (^tempest.api.compute.servers.test_attach_interfaces)|\
+          (^tempest.api.compute.servers.test_multiple_create)"
+      devstack_localrc:
+        USE_PYTHON3: true
+        NETWORK_API_EXTENSIONS: "{{ (network_api_extensions_common + network_api_extensions_tempest) | join(',') }}"
+        PHYSICAL_NETWORK: public
+        IMAGE_URLS: https://cloud-images.ubuntu.com/minimal/releases/focal/release/ubuntu-20.04-minimal-cloudimg-amd64.img
+        CIRROS_VERSION: 0.5.1
+        DEFAULT_IMAGE_NAME: cirros-0.5.1-x86_64-uec
+        DEFAULT_IMAGE_FILE_NAME: cirros-0.5.1-x86_64-uec.tar.gz
+        ADVANCED_IMAGE_NAME: ubuntu-20.04-minimal-cloudimg-amd64
+        ADVANCED_INSTANCE_TYPE: ntp_image_256M
+        ADVANCED_INSTANCE_USER: ubuntu
+        CUSTOMIZE_IMAGE: true
+        BUILD_TIMEOUT: 784
+        # TODO(lucasagomes): Re-enable MOD_WSGI after
+        # https://bugs.launchpad.net/neutron/+bug/1912359 is implemented
+        NEUTRON_DEPLOY_MOD_WSGI: false
+        # TODO(ralonsoh): remove OVN_BUILD_FROM_SOURCE once the OS packages
+        # include at least OVN v20.12.0.
+        OVN_BUILD_FROM_SOURCE: True
+        OVN_BRANCH: "v21.03.0"
+        OVS_BRANCH: "8dc1733eaea866dce033b3c44853e1b09bf59fc7"
+      devstack_plugins:
+        neutron: https://opendev.org/openstack/neutron.git
+        neutron-tempest-plugin: https://opendev.org/openstack/neutron-tempest-plugin.git
+      tempest_plugins:
+        - neutron-tempest-plugin
       # TODO(slaweq): find a way to put this list of extensions in
       # neutron repository and keep it different per branch,
       # then it could be removed from here
@@ -14,7 +60,6 @@
         - availability_zone
         - binding
         - default-subnetpools
-        - dhcp_agent_scheduler
         - dns-domain-ports
         - dns-integration
         - dns-integration-domain-keywords
@@ -30,13 +75,15 @@
         - fip-port-details
         - flavors
         - floating-ip-port-forwarding
+        - floating-ip-port-forwarding-detail
         - floatingip-pools
         - ip-substring-filtering
         - l3-conntrack-helper
+        - l3-ext-ndp-proxy
         - l3-flavors
         - l3-ha
+        - l3-ndp-proxy
         - l3_agent_scheduler
-        - logging
         - metering
         - multi-provider
         - net-mtu
@@ -54,7 +101,6 @@
         - project-id
         - provider
         - qos
-        - qos-bw-minimum-ingress
         - qos-fip
         - quotas
         - quota_details
@@ -64,7 +110,6 @@
         - rbac-security-groups
         - rbac-subnetpool
         - router
-        - router-admin-state-down-before-update
         - router_availability_zone
         - security-group
         - security-groups-remote-address-group
@@ -85,33 +130,68 @@
         - trunk
         - trunk-details
         - uplink-status-propagation
-      network_api_extensions_tempest:
-        - dvr
-      network_available_features: &available_features
-        - ipv6_metadata
-      tempest_test_regex: ^neutron_tempest_plugin\.api
       devstack_services:
+        tempest: true
+        neutron-dns: true
         neutron-log: true
-      devstack_localrc:
-        # TODO(lucasagomes): Re-enable MOD_WSGI after
-        # https://bugs.launchpad.net/neutron/+bug/1912359 is implemented
-        NEUTRON_DEPLOY_MOD_WSGI: false
-        # TODO(ralonsoh): remove OVN_BUILD_FROM_SOURCE once the OS packages
-        # include at least OVN v20.12.0.
-        OVN_BUILD_FROM_SOURCE: True
-        OVN_BRANCH: "v21.03.0"
-        OVS_BRANCH: "8dc1733eaea866dce033b3c44853e1b09bf59fc7"
-        NETWORK_API_EXTENSIONS: "{{ network_api_extensions_common | join(',') }}"
+        neutron-qos: true
+        neutron-segments: true
+        neutron-trunk: true
+        neutron-uplink-status-propagation: true
+        neutron-network-segment-range: true
+        neutron-port-forwarding: true
+        neutron-conntrack-helper: true
+        neutron-tag-ports-during-bulk-creation: true
+        neutron-ndp-proxy: true
+        br-ex-tcpdump: true
+        br-int-flows: true
+        # Cinder services
+        c-api: false
+        c-bak: false
+        c-sch: false
+        c-vol: false
+        cinder: false
+        # We don't need Swift to be run in the Neutron jobs
+        s-account: false
+        s-container: false
+        s-object: false
+        s-proxy: false
       devstack_local_conf:
         post-config:
+          $NEUTRON_CONF:
+            QUOTAS:
+              quota_router: 100
+              quota_floatingip: 500
+              quota_security_group: 150
+              quota_security_group_rule: 1000
           # NOTE(slaweq): We can get rid of this hardcoded absolute path when
           # devstack-tempest job will be switched to use lib/neutron instead of
           # lib/neutron-legacy
           /$NEUTRON_CORE_PLUGIN_CONF:
-            AGENT:
-              tunnel_types: gre,vxlan
+            ml2:
+              type_drivers: flat,geneve,vlan,gre,local,vxlan
+            ml2_type_vlan:
+              network_vlan_ranges: foo:1:10
+            ml2_type_vxlan:
+              vni_ranges: 1:2000
+            ml2_type_gre:
+              tunnel_id_ranges: 1:1000
             network_log:
               local_output_log_base: /tmp/test_log.log
+          $NEUTRON_L3_CONF:
+            agent:
+              availability_zone: nova
+          $NEUTRON_DHCP_CONF:
+            agent:
+              availability_zone: nova
+        test-config:
+          $TEMPEST_CONFIG:
+            neutron_plugin_options:
+              provider_vlans: foo,
+              agent_availability_zone: nova
+              image_is_advanced: true
+              available_type_drivers: flat,geneve,vlan,gre,local,vxlan
+              provider_net_base_segm_id: 1
     irrelevant-files:
       - ^(test-|)requirements.txt$
       - lower-constraints.txt
@@ -131,14 +211,17 @@
       - ^neutron_lib/tests/unit/.*$
       - ^neutron_tempest_plugin/scenario/.*$
       - ^rally-jobs/.*$
+      - ^roles/.*functional.*$
+      - ^playbooks/.*functional.*$
       - ^vagrant/.*$
       - ^zuul.d/(?!(project)).*\.yaml
 
 - job:
-    name: neutron-tempest-plugin-scenario-openvswitch
-    parent: neutron-tempest-plugin-scenario-nested-switch
+    name: neutron-tempest-plugin-openvswitch
+    parent: neutron-tempest-plugin-base-nested-switch
     timeout: 10000
     vars:
+      configure_swap_size: 2048
       devstack_services:
         # Disable OVN services
         br-ex-tcpdump: false
@@ -155,15 +238,17 @@
         q-l3: true
         q-meta: true
         q-metering: true
-      network_api_extensions: *api_extensions
       network_api_extensions_openvswitch:
+        - dhcp_agent_scheduler
         - local_ip
-      network_available_features: *available_features
+        - qos-bw-minimum-ingress
+      network_available_features: &available_features
+        - ipv6_metadata
       devstack_localrc:
         Q_AGENT: openvswitch
         Q_ML2_TENANT_NETWORK_TYPE: vxlan
         Q_ML2_PLUGIN_MECHANISM_DRIVERS: openvswitch
-        NETWORK_API_EXTENSIONS: "{{ (network_api_extensions + network_api_extensions_openvswitch) | join(',') }}"
+        NETWORK_API_EXTENSIONS: "{{ (network_api_extensions_common + network_api_extensions_openvswitch) | join(',') }}"
       devstack_local_conf:
         post-config:
           $NEUTRON_CONF:
@@ -179,6 +264,7 @@
             ovs:
               tunnel_bridge: br-tun
               bridge_mappings: public:br-ex
+              openflow_processed_per_port: True
         test-config:
           $TEMPEST_CONFIG:
             network-feature-enabled:
@@ -215,18 +301,20 @@
       - ^neutron/services/trunk/drivers/ovn/.*$
       - ^neutron/cmd/ovn/.*$
       - ^neutron/common/ovn/.*$
-      - ^neutron_tempest_plugin/api/test_.*$
       - ^neutron_tempest_plugin/(bgpvpn|fwaas|neutron_dynamic_routing|sfc|tap_as_a_service|vpnaas).*$
       - ^neutron_tempest_plugin/services/bgp/.*$
       - ^rally-jobs/.*$
+      - ^roles/.*functional.*$
+      - ^playbooks/.*functional.*$
       - ^vagrant/.*$
       - ^zuul.d/(?!(project)).*\.yaml
 
 - job:
-    name: neutron-tempest-plugin-scenario-openvswitch-iptables_hybrid
-    parent: neutron-tempest-plugin-scenario-nested-switch
+    name: neutron-tempest-plugin-openvswitch-iptables_hybrid
+    parent: neutron-tempest-plugin-base-nested-switch
     timeout: 10000
     vars:
+      configure_swap_size: 2048
       devstack_services:
         # Disable OVN services
         br-ex-tcpdump: false
@@ -243,9 +331,10 @@
         q-l3: true
         q-meta: true
         q-metering: true
-      network_api_extensions: *api_extensions
       network_api_extensions_openvswitch:
+        - dhcp_agent_scheduler
         - local_ip
+        - logging
       network_available_features: *available_features
       # TODO(slaweq): remove trunks subport_connectivity test from blacklist
       # when bug https://bugs.launchpad.net/neutron/+bug/1838760 will be fixed
@@ -258,7 +347,7 @@
         Q_AGENT: openvswitch
         Q_ML2_TENANT_NETWORK_TYPE: vxlan
         Q_ML2_PLUGIN_MECHANISM_DRIVERS: openvswitch
-        NETWORK_API_EXTENSIONS: "{{ (network_api_extensions + network_api_extensions_openvswitch) | join(',') }}"
+        NETWORK_API_EXTENSIONS: "{{ (network_api_extensions_common + network_api_extensions_openvswitch) | join(',') }}"
       devstack_local_conf:
         post-config:
           $NEUTRON_CONF:
@@ -313,18 +402,30 @@
       - ^neutron/services/trunk/drivers/ovn/.*$
       - ^neutron/cmd/ovn/.*$
       - ^neutron/common/ovn/.*$
-      - ^neutron_tempest_plugin/api/test_.*$
       - ^neutron_tempest_plugin/(bgpvpn|fwaas|neutron_dynamic_routing|sfc|tap_as_a_service|vpnaas).*$
       - ^neutron_tempest_plugin/services/bgp/.*$
       - ^rally-jobs/.*$
+      - ^roles/.*functional.*$
+      - ^playbooks/.*functional.*$
       - ^vagrant/.*$
       - ^zuul.d/(?!(project)).*\.yaml
 
+# TODO(slaweq): remove that job's definition as soon as new job
+# "neutron-tempest-plugin-openvswitch-iptables_hybrid" will be used in the
+# neutron repo as a parent for a
+# "neutron-ovs-tempest-plugin-scenario-iptables_hybrid-nftables" job
 - job:
-    name: neutron-tempest-plugin-scenario-openvswitch-distributed-dhcp
-    parent: neutron-tempest-plugin-scenario-openvswitch
+    name: neutron-tempest-plugin-scenario-openvswitch-iptables_hybrid
+    parent: neutron-tempest-plugin-openvswitch-iptables_hybrid
+
+- job:
+    name: neutron-tempest-plugin-openvswitch-distributed-dhcp
+    parent: neutron-tempest-plugin-openvswitch
     timeout: 10000
     vars:
+      network_api_extensions_openvswitch:
+        - local_ip
+        - qos-bw-minimum-ingress
       # NOTE: DHCP extra options and dns services aren't supported with
       # distributed DHCP L2 agent extension
       tempest_exclude_regex: "\
@@ -335,10 +436,13 @@
         q-distributed-dhcp: true
 
 - job:
-    name: neutron-tempest-plugin-scenario-openvswitch-iptables_hybrid-distributed-dhcp
-    parent: neutron-tempest-plugin-scenario-openvswitch-iptables_hybrid
+    name: neutron-tempest-plugin-openvswitch-iptables_hybrid-distributed-dhcp
+    parent: neutron-tempest-plugin-openvswitch-iptables_hybrid
     timeout: 10000
     vars:
+      network_api_extensions_openvswitch:
+        - local_ip
+        - logging
       # NOTE: DHCP extra options and dns services aren't supported with
       # distributed DHCP L2 agent extension
       tempest_exclude_regex: "\
@@ -349,13 +453,14 @@
         q-distributed-dhcp: true
 
 - job:
-    name: neutron-tempest-plugin-scenario-linuxbridge
-    parent: neutron-tempest-plugin-scenario-nested-switch
+    name: neutron-tempest-plugin-linuxbridge
+    parent: neutron-tempest-plugin-base-nested-switch
     timeout: 10000
     roles:
       - zuul: openstack/neutron
     pre-run: playbooks/linuxbridge-scenario-pre-run.yaml
     vars:
+      configure_swap_size: 2048
       devstack_services:
         # Disable OVN services
         br-ex-tcpdump: false
@@ -371,8 +476,10 @@
         q-l3: true
         q-meta: true
         q-metering: true
-      network_api_extensions: *api_extensions
+        # SG logging isn't supported by linuxbridge backend
+        neutron-log: false
       network_api_extensions_linuxbridge:
+        - dhcp_agent_scheduler
         - vlan-transparent
       network_available_features: *available_features
       # TODO(eolivare): remove VLAN Transparency tests from blacklist
@@ -381,12 +488,16 @@
       # test_established_tcp_session_after_re_attachinging_sg from the
       # exclude regex when bug https://bugs.launchpad.net/neutron/+bug/1936911
       # will be fixed
+      # TODO(slaweq) remove test_floatingip_port_details from the exclude
+      # regex when bug https://bugs.launchpad.net/neutron/+bug/1799790 will be
+      # fixed
       tempest_exclude_regex: "\
           (^neutron_tempest_plugin.scenario.test_vlan_transparency.VlanTransparencyTest)|\
-          (^neutron_tempest_plugin.scenario.test_security_groups.NetworkSecGroupTest.test_established_tcp_session_after_re_attachinging_sg)"
+          (^neutron_tempest_plugin.scenario.test_security_groups.NetworkSecGroupTest.test_established_tcp_session_after_re_attachinging_sg)|\
+          (^neutron_tempest_plugin.scenario.test_floatingip.FloatingIPPortDetailsTest.test_floatingip_port_details)"
       devstack_localrc:
         Q_AGENT: linuxbridge
-        NETWORK_API_EXTENSIONS: "{{ (network_api_extensions + network_api_extensions_linuxbridge) | join(',') }}"
+        NETWORK_API_EXTENSIONS: "{{ (network_api_extensions_common + network_api_extensions_linuxbridge) | join(',') }}"
         Q_ML2_TENANT_NETWORK_TYPE: vxlan
         Q_ML2_PLUGIN_MECHANISM_DRIVERS: openvswitch,linuxbridge
       devstack_local_conf:
@@ -398,6 +509,8 @@
               l3_ha: true
             AGENT:
               debug_iptables_rules: true
+            EXPERIMENTAL:
+              linuxbridge: true
           # NOTE(slaweq): We can get rid of this hardcoded absolute path when
           # devstack-tempest job will be switched to use lib/neutron instead of
           # lib/neutron-legacy
@@ -444,19 +557,26 @@
       - ^neutron/services/trunk/drivers/ovn/.*$
       - ^neutron/cmd/ovn/.*$
       - ^neutron/common/ovn/.*$
-      - ^neutron_tempest_plugin/api/test_.*$
       - ^neutron_tempest_plugin/(bgpvpn|fwaas|neutron_dynamic_routing|sfc|tap_as_a_service|vpnaas).*$
       - ^neutron_tempest_plugin/services/bgp/.*$
       - ^rally-jobs/.*$
+      - ^roles/.*functional.*$
+      - ^playbooks/.*functional.*$
       - ^vagrant/.*$
       - ^zuul.d/(?!(project)).*\.yaml
 
+# TODO(slaweq): remove that job's definition as soon as new job
+# "neutron-tempest-plugin-linuxbridge" will be used in the neutron repo as
+# a parent for a "neutron-linuxbridge-tempest-plugin-scenario-nftables" job
 - job:
-    name: neutron-tempest-plugin-scenario-ovn
-    parent: neutron-tempest-plugin-scenario-nested-switch
+    name: neutron-tempest-plugin-scenario-linuxbridge
+    parent: neutron-tempest-plugin-linuxbridge
+
+- job:
+    name: neutron-tempest-plugin-ovn
+    parent: neutron-tempest-plugin-base-nested-switch
     timeout: 10800
     vars:
-      network_api_extensions: *api_extensions
       network_api_extensions_ovn:
         - vlan-transparent
       # TODO(jlibosva): Remove the NetworkWritableMtuTest test from the list
@@ -465,12 +585,11 @@
           (^neutron_tempest_plugin.scenario.test_mtu.NetworkWritableMtuTest)"
       devstack_localrc:
         Q_AGENT: ovn
-        NETWORK_API_EXTENSIONS: "{{ (network_api_extensions + network_api_extensions_ovn) | join(',') }}"
+        NETWORK_API_EXTENSIONS: "{{ (network_api_extensions_common + network_api_extensions_ovn) | join(',') }}"
         Q_ML2_PLUGIN_MECHANISM_DRIVERS: ovn,logger
         Q_ML2_PLUGIN_TYPE_DRIVERS: local,flat,vlan,geneve
         Q_ML2_TENANT_NETWORK_TYPE: geneve
         Q_USE_PROVIDERNET_FOR_PUBLIC: true
-        PHYSICAL_NETWORK: public
         # NOTE(slaweq): In the job with OVN backend we can't use Ubuntu minimal
         # image because kernel in that image don't supports MULTICAST traffic
         # thus multicast scenario test with IGMP snooping enabled would fail
@@ -488,7 +607,7 @@
         # is included in an ovn released version
         OVN_BUILD_FROM_SOURCE: True
         OVN_BRANCH: "v21.06.0"
-        OVS_BRANCH: "branch-2.15"
+        OVS_BRANCH: "a4b04276ab5934d087669ff2d191a23931335c87"
         OVS_SYSCONFDIR: "/usr/local/etc/openvswitch"
       devstack_services:
         br-ex-tcpdump: true
@@ -537,6 +656,9 @@
         '{{ devstack_base_dir }}/data/ovn': 'logs'
         '{{ devstack_log_dir }}/ovsdb-server-nb.log': 'logs'
         '{{ devstack_log_dir }}/ovsdb-server-sb.log': 'logs'
+        '/var/log/ovn': 'logs'
+        '/var/log/openvswitch': 'logs'
+        '/var/lib/ovn': 'logs'
     irrelevant-files:
       - ^(test-|)requirements.txt$
       - lower-constraints.txt
@@ -571,12 +693,20 @@
       - ^neutron/services/trunk/drivers/linuxbridge/.*$
       - ^neutron/services/trunk/drivers/openvswitch/.*$
       - ^neutron/scheduler/.*$
-      - ^neutron_tempest_plugin/api/test_.*$
       - ^neutron_tempest_plugin/(bgpvpn|fwaas|neutron_dynamic_routing|sfc|tap_as_a_service|vpnaas).*$
       - ^neutron_tempest_plugin/services/bgp/.*$
       - ^rally-jobs/.*$
+      - ^roles/.*functional.*$
+      - ^playbooks/.*functional.*$
       - ^vagrant/.*$
       - ^zuul.d/(?!(project)).*\.yaml
+
+# TODO(slaweq): remove that job's definition as soon as new job
+# "neutron-tempest-plugin-ovn" will be used in the neutron-lib repo as
+# instead of old "neutron-tempest-plugin-api" job
+- job:
+    name: neutron-tempest-plugin-api
+    parent: neutron-tempest-plugin-ovn
 
 - job:
     name: neutron-tempest-plugin-dvr-multinode-scenario
@@ -601,6 +731,7 @@
       tempest_test_timeout: 2400
       network_api_extensions_common: *api_extensions
       network_api_extensions_dvr:
+        - dhcp_agent_scheduler
         - dvr
       devstack_localrc:
         USE_PYTHON3: true
@@ -769,7 +900,7 @@
 
 - job:
     name: neutron-tempest-plugin-designate-scenario
-    parent: neutron-tempest-plugin-scenario-nested-switch
+    parent: neutron-tempest-plugin-base-nested-switch
     description: Neutron designate integration scenario
     required-projects:
       - openstack/designate
@@ -817,6 +948,8 @@
       - ^neutron_tempest_plugin/(bgpvpn|fwaas|neutron_dynamic_routing|sfc|tap_as_a_service|vpnaas).*$
       - ^neutron_tempest_plugin/services/bgp/.*$
       - ^rally-jobs/.*$
+      - ^roles/.*functional.*$
+      - ^playbooks/.*functional.*$
       - ^vagrant/.*$
       - ^zuul.d/(?!(project)).*\.yaml
 
@@ -845,7 +978,6 @@
         q-l3: true
         q-meta: true
         q-metering: true
-      network_api_extensions_common: *api_extensions
       tempest_test_regex: ^neutron_tempest_plugin\.sfc
       devstack_plugins:
         networking-sfc: https://opendev.org/openstack/networking-sfc
@@ -880,6 +1012,8 @@
       - ^tools/.*$
       - ^tox.ini$
       - ^rally-jobs/.*$
+      - ^roles/.*functional.*$
+      - ^playbooks/.*functional.*$
       - ^vagrant/.*$
       - ^zuul.d/(?!(project)).*\.yaml
 
@@ -905,8 +1039,8 @@
         q-l3: true
         q-meta: true
         q-metering: true
+      tempest_concurrency: 4
       tempest_test_regex: ^neutron_tempest_plugin\.bgpvpn
-      network_api_extensions: *api_extensions
       network_api_extensions_bgpvpn:
         - bgpvpn
         - bgpvpn-routes-control
@@ -917,7 +1051,7 @@
         NETWORKING_BGPVPN_DRIVER: "BGPVPN:BaGPipe:networking_bgpvpn.neutron.services.service_drivers.bagpipe.bagpipe_v2.BaGPipeBGPVPNDriver:default"
         BAGPIPE_DATAPLANE_DRIVER_IPVPN: "ovs"
         BAGPIPE_BGP_PEERS: "-"
-        NETWORK_API_EXTENSIONS: "{{ (network_api_extensions + network_api_extensions_bgpvpn) | join(',') }}"
+        NETWORK_API_EXTENSIONS: "{{ (network_api_extensions_common + network_api_extensions_bgpvpn) | join(',') }}"
       devstack_plugins:
         networking-bgpvpn: https://git.openstack.org/openstack/networking-bgpvpn
         networking-bagpipe: https://git.openstack.org/openstack/networking-bagpipe
@@ -939,6 +1073,8 @@
       - ^tools/.*$
       - ^tox.ini$
       - ^rally-jobs/.*$
+      - ^roles/.*functional.*$
+      - ^playbooks/.*functional.*$
       - ^vagrant/.*$
       - ^zuul.d/(?!(project)).*\.yaml
 
@@ -957,7 +1093,6 @@
       devstack_plugins:
         neutron-dynamic-routing: https://opendev.org/openstack/neutron-dynamic-routing
         neutron-tempest-plugin: https://opendev.org/openstack/neutron-tempest-plugin
-      network_api_extensions_common: *api_extensions
       network_api_extensions_bgp:
         - bgp
         - bgp_dragent_scheduler
@@ -1003,6 +1138,8 @@
       - ^tools/.*$
       - ^tox.ini$
       - ^rally-jobs/.*$
+      - ^roles/.*functional.*$
+      - ^playbooks/.*functional.*$
       - ^vagrant/.*$
       - ^zuul.d/(?!(project)).*\.yaml
 
@@ -1017,11 +1154,11 @@
       - openstack/neutron-tempest-plugin
       - openstack/tempest
     vars:
+      tempest_concurrency: 4
       tempest_test_regex: ^neutron_tempest_plugin\.fwaas
       devstack_plugins:
         neutron-fwaas: https://opendev.org/openstack/neutron-fwaas.git
         neutron-tempest-plugin: https://opendev.org/openstack/neutron-tempest-plugin.git
-      network_api_extensions_common: *api_extensions
       network_api_extensions_fwaas:
         - fwaas_v2
       devstack_localrc:
@@ -1042,6 +1179,28 @@
         q-meta: true
         q-metering: true
         q-l3: true
+        neutron-log: false
+    irrelevant-files:
+      - ^(test-|)requirements.txt$
+      - ^releasenotes/.*$
+      - ^doc/.*$
+      - ^.*\.conf\.sample$
+      - ^setup.cfg$
+      - ^.*\.rst$
+      - ^neutron/locale/.*$
+      - ^neutron/tests/unit/.*$
+      - ^neutron/tests/fullstack/.*
+      - ^neutron/tests/functional/.*
+      - ^neutron_tempest_plugin/api/test_.*$
+      - ^neutron_tempest_plugin/(bgpvpn|neutron_dynamic_routing|sfc|tap_as_a_service|vpnaas).*$
+      - ^neutron_tempest_plugin/services/bgp/.*$
+      - ^tools/.*$
+      - ^tox.ini$
+      - ^rally-jobs/.*$
+      - ^roles/.*functional.*$
+      - ^playbooks/.*functional.*$
+      - ^vagrant/.*$
+      - ^zuul.d/(?!(project)).*\.yaml
 
 - job:
     name: neutron-tempest-plugin-vpnaas
@@ -1053,6 +1212,7 @@
       - openstack/neutron-tempest-plugin
       - openstack/tempest
     vars:
+      tempest_concurrency: 4
       tempest_test_regex: ^neutron_tempest_plugin\.vpnaas
       devstack_plugins:
         neutron-vpnaas: https://opendev.org/openstack/neutron-vpnaas.git
@@ -1099,6 +1259,8 @@
       - ^tools/.*$
       - ^tox.ini$
       - ^rally-jobs/.*$
+      - ^roles/.*functional.*$
+      - ^playbooks/.*functional.*$
       - ^vagrant/.*$
       - ^zuul.d/(?!(project)).*\.yaml
 
@@ -1116,32 +1278,36 @@
       - openstack/tap-as-a-service
       - openstack/tempest
     vars:
+      tempest_concurrency: 4
       tempest_test_regex: ^neutron_tempest_plugin\.tap_as_a_service
       tox_envlist: all
-      network_api_extensions_common: *api_extensions
       network_api_extensions_tempest:
         - taas
         - taas-vlan-filter
       devstack_localrc:
         NETWORK_API_EXTENSIONS: "{{ (network_api_extensions_common + network_api_extensions_tempest) | join(',') }}"
-        DOWNLOAD_DEFAULT_IMAGES: false
-        IMAGE_URLS: "http://download.cirros-cloud.net/0.3.4/cirros-0.3.4-i386-disk.img,https://cloud-images.ubuntu.com/minimal/releases/focal/release/ubuntu-20.04-minimal-cloudimg-amd64.img"
-        DEFAULT_IMAGE_NAME: cirros-0.3.4-i386-disk
-        ADVANCED_IMAGE_NAME: ubuntu-20.04-minimal-cloudimg-amd64
+        IMAGE_URLS: https://cloud-images.ubuntu.com/releases/bionic/release/ubuntu-18.04-server-cloudimg-amd64.img
+        ADVANCED_IMAGE_NAME: ubuntu-18.04-server-cloudimg-amd64
+        ADVANCED_INSTANCE_TYPE: ntp_image_384M
+        ADVANCED_INSTANCE_USER: ubuntu
+        CUSTOMIZE_IMAGE: false
         BUILD_TIMEOUT: 784
         Q_AGENT: openvswitch
-        Q_ML2_TENANT_NETWORK_TYPE: vxlan
+        Q_ML2_TENANT_NETWORK_TYPE: vxlan,vlan
         Q_ML2_PLUGIN_MECHANISM_DRIVERS: openvswitch
       devstack_local_conf:
         post-config:
           /$NEUTRON_CORE_PLUGIN_CONF:
             AGENT:
-              tunnel_types: vxlan,gre
+              tunnel_types: vxlan
+            ml2_type_vlan:
+              network_vlan_ranges: public
         test-config:
           $TEMPEST_CONFIG:
-            taas_plugin_options:
-              advanced_image_ref: ubuntu-20.04-minimal-cloudimg-amd64
-              advanced_image_ssh_user: ubuntu
+            neutron_plugin_options:
+              image_is_advanced: true
+              advanced_image_flavor_ref: d1
+            taas:
               provider_physical_network: public
               provider_segmentation_id: 100
             image_feature_enabled:
@@ -1202,5 +1368,7 @@
       - ^tools/.*$
       - ^tox.ini$
       - ^rally-jobs/.*$
+      - ^roles/.*functional.*$
+      - ^playbooks/.*functional.*$
       - ^vagrant/.*$
       - ^zuul.d/(?!(project)).*\.yaml

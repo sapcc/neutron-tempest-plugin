@@ -61,14 +61,15 @@ class TestSfc(base.SfcScenarioTest):
 
         self.ssh_user = CONF.validation.image_ssh_user
         self.keypair = self.create_keypair()
-        self.net1, self.subnet1, self.router1 = self.create_networks(
-            port_security_enabled=False)
+        self.net1, self.subnet1, self.router1 = (
+            self.setup_network_subnet_with_router(port_security_enabled=False)
+        )
         self.router2 = self._create_router()
         self.router3 = self._create_router()
-        self.router2_net1 = self._create_port(self.net1['id'])
+        self.router2_net1 = self.create_port(self.net1['id'])
         self._add_router_interface(
             self.router2['id'], self.router2_net1['id'])
-        self.router3_net1 = self._create_port(self.net1['id'])
+        self.router3_net1 = self.create_port(self.net1['id'])
         self._add_router_interface(
             self.router3['id'], self.router3_net1['id'])
         self.router2_net1_fixed_ip = self.router2_net1[
@@ -81,7 +82,7 @@ class TestSfc(base.SfcScenarioTest):
         floating_ip = self._create_floating_ip(
             server)
         port_id, fixed_ip = (
-            self._get_server_port_id_and_ip4(server))
+            self.get_server_port_id_and_ip4(server))
         return floating_ip, port_id, fixed_ip
 
     def _create_floating_ip(self, server, client=None):
@@ -1063,13 +1064,13 @@ class TestSfc(base.SfcScenarioTest):
         self
     ):
         self.router4 = self._create_router()
-        self.router4_net1 = self._create_port(self.net1['id'])
+        self.router4_net1 = self.create_port(self.net1['id'])
         self._add_router_interface(
             self.router4['id'], self.router4_net1['id'])
         self.router4_net1_fixed_ip = self.router4_net1[
             'fixed_ips'][0]['ip_address']
         self.router5 = self._create_router()
-        self.router5_net1 = self._create_port(self.net1['id'])
+        self.router5_net1 = self.create_port(self.net1['id'])
         self._add_router_interface(
             self.router5['id'], self.router5_net1['id'])
         self.router5_net1_fixed_ip = self.router5_net1[
@@ -1182,7 +1183,7 @@ class TestSfc(base.SfcScenarioTest):
         adm_get_server = self.os_admin.servers_client.show_server
         server = adm_get_server(inst['id'])['server']
 
-        self._check_tenant_network_connectivity(
+        self.check_tenant_network_connectivity(
             server, self.ssh_user, self.keypair['private_key'])
 
         # Check server is on different node
