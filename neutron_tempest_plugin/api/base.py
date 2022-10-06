@@ -108,7 +108,6 @@ class BaseNetworkTest(test.BaseTestCase):
 
     @classmethod
     def resource_setup(cls):
-        time.sleep(120)
         super(BaseNetworkTest, cls).resource_setup()
 
         cls.networks = []
@@ -292,7 +291,6 @@ class BaseNetworkTest(test.BaseTestCase):
                     network_segment_range['id'])
 
         super(BaseNetworkTest, cls).resource_cleanup()
-        time.sleep(120)
 
     @classmethod
     def _try_delete_resource(cls, delete_callable, *args, **kwargs):
