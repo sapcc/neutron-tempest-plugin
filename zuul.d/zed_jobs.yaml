@@ -1,13 +1,16 @@
 - job:
-    name: neutron-tempest-plugin-api-wallaby
-    parent: neutron-tempest-plugin-base
-    override-checkout: stable/wallaby
+    name: neutron-tempest-plugin-openvswitch-zed
+    parent: neutron-tempest-plugin-openvswitch
+    override-checkout: stable/zed
     vars:
-      tempest_concurrency: 4
-      tempest_test_regex: ^neutron_tempest_plugin\.api
-      # TODO(slaweq): find a way to put this list of extensions in
-      # neutron repository and keep it different per branch,
-      # then it could be removed from here
+      network_api_extensions_openvswitch:
+        - local_ip
+        - qos-bw-minimum-ingress
+      tempest_test_regex: "\
+          (^neutron_tempest_plugin.api)|\
+          (^neutron_tempest_plugin.scenario)|\
+          (^tempest.api.compute.servers.test_attach_interfaces)|\
+          (^tempest.api.compute.servers.test_multiple_create)"
       network_api_extensions_common: &api_extensions
         - address-group
         - address-scope
@@ -20,6 +23,7 @@
         - dhcp_agent_scheduler
         - dns-domain-ports
         - dns-integration
+        - dns-integration-domain-keywords
         - empty-string-filtering
         - expose-port-forwarding-in-fip
         - expose-l3-conntrack-helper
@@ -32,11 +36,14 @@
         - fip-port-details
         - flavors
         - floating-ip-port-forwarding
+        - floating-ip-port-forwarding-detail
         - floatingip-pools
         - ip-substring-filtering
         - l3-conntrack-helper
+        - l3-ext-ndp-proxy
         - l3-flavors
         - l3-ha
+        - l3-ndp-proxy
         - l3_agent_scheduler
         - logging
         - metering
@@ -47,7 +54,9 @@
         - network_availability_zone
         - network-segment-range
         - pagination
+        - port-device-profile
         - port-resource-request
+        - port-resource-request-groups
         - port-mac-address-regenerate
         - port-security
         - port-security-groups-filtering
@@ -64,7 +73,6 @@
         - rbac-security-groups
         - rbac-subnetpool
         - router
-        - router-admin-state-down-before-update
         - router_availability_zone
         - security-group
         - security-groups-remote-address-group
@@ -76,6 +84,7 @@
         - standard-attr-segment
         - standard-attr-tag
         - standard-attr-timestamp
+        - stateful-security-group
         - subnet_allocation
         - subnet-dns-publish-fixed-ip
         - subnet-service-types
@@ -84,24 +93,10 @@
         - trunk
         - trunk-details
         - uplink-status-propagation
-      network_api_extensions_tempest:
-        - dvr
       network_available_features: &available_features
         - ipv6_metadata
-
-- job:
-    name: neutron-tempest-plugin-scenario-openvswitch-wallaby
-    parent: neutron-tempest-plugin-openvswitch
-    override-checkout: stable/wallaby
-    vars:
-      tempest_test_regex: "\
-          (^neutron_tempest_plugin.scenario)|\
-          (^tempest.api.compute.servers.test_attach_interfaces)|\
-          (^tempest.api.compute.servers.test_multiple_create)"
-      network_api_extensions: *api_extensions
-      network_available_features: *available_features
       devstack_localrc:
-        NETWORK_API_EXTENSIONS: "{{ network_api_extensions | join(',') }}"
+        NETWORK_API_EXTENSIONS: "{{ (network_api_extensions_common + network_api_extensions_openvswitch) | join(',') }}"
       devstack_local_conf:
         test-config:
           $TEMPEST_CONFIG:
@@ -109,18 +104,28 @@
               available_features: "{{ network_available_features | join(',') }}"
 
 - job:
-    name: neutron-tempest-plugin-scenario-openvswitch-iptables_hybrid-wallaby
+    name: neutron-tempest-plugin-openvswitch-iptables_hybrid-zed
     parent: neutron-tempest-plugin-openvswitch-iptables_hybrid
-    override-checkout: stable/wallaby
+    override-checkout: stable/zed
     vars:
+      network_api_extensions_openvswitch:
+        - local_ip
+        - logging
       tempest_test_regex: "\
+          (^neutron_tempest_plugin.api)|\
           (^neutron_tempest_plugin.scenario)|\
           (^tempest.api.compute.servers.test_attach_interfaces)|\
           (^tempest.api.compute.servers.test_multiple_create)"
-      network_api_extensions: *api_extensions
+      # TODO(slaweq): remove trunks subport_connectivity test from blacklist
+      # when bug https://bugs.launchpad.net/neutron/+bug/1838760 will be fixed
+      # TODO(akatz): remove established tcp session verification test when the
+      # bug https://bugzilla.redhat.com/show_bug.cgi?id=1965036 will be fixed
+      tempest_exclude_regex: "\
+          (^neutron_tempest_plugin.scenario.test_trunk.TrunkTest.test_subport_connectivity)|\
+          (^neutron_tempest_plugin.scenario.test_security_groups.NetworkSecGroupTest.test_established_tcp_session_after_re_attachinging_sg)"
       network_available_features: *available_features
       devstack_localrc:
-        NETWORK_API_EXTENSIONS: "{{ network_api_extensions | join(',') }}"
+        NETWORK_API_EXTENSIONS: "{{ (network_api_extensions_common + network_api_extensions_openvswitch) | join(',') }}"
       devstack_local_conf:
         test-config:
           $TEMPEST_CONFIG:
@@ -128,18 +133,24 @@
               available_features: "{{ network_available_features | join(',') }}"
 
 - job:
-    name: neutron-tempest-plugin-scenario-linuxbridge-wallaby
+    name: neutron-tempest-plugin-linuxbridge-zed
     parent: neutron-tempest-plugin-linuxbridge
-    override-checkout: stable/wallaby
+    override-checkout: stable/zed
     vars:
+      network_api_extensions_linuxbridge:
+        - vlan-transparent
       tempest_test_regex: "\
+          (^neutron_tempest_plugin.api)|\
           (^neutron_tempest_plugin.scenario)|\
           (^tempest.api.compute.servers.test_attach_interfaces)|\
           (^tempest.api.compute.servers.test_multiple_create)"
-      network_api_extensions: *api_extensions
+      tempest_exclude_regex: "\
+          (^neutron_tempest_plugin.scenario.test_vlan_transparency.VlanTransparencyTest)|\
+          (^neutron_tempest_plugin.scenario.test_security_groups.NetworkSecGroupTest.test_established_tcp_session_after_re_attachinging_sg)|\
+          (^neutron_tempest_plugin.scenario.test_floatingip.FloatingIPPortDetailsTest.test_floatingip_port_details)"
       network_available_features: *available_features
       devstack_localrc:
-        NETWORK_API_EXTENSIONS: "{{ network_api_extensions | join(',') }}"
+        NETWORK_API_EXTENSIONS: "{{ (network_api_extensions_common + network_api_extensions_linuxbridge) | join(',') }}"
       devstack_local_conf:
         test-config:
           $TEMPEST_CONFIG:
@@ -147,17 +158,22 @@
               available_features: "{{ network_available_features | join(',') }}"
 
 - job:
-    name: neutron-tempest-plugin-scenario-ovn-wallaby
+    name: neutron-tempest-plugin-ovn-zed
     parent: neutron-tempest-plugin-ovn
-    override-checkout: stable/wallaby
+    override-checkout: stable/zed
     vars:
       tempest_test_regex: "\
+          (^neutron_tempest_plugin.api)|\
           (^neutron_tempest_plugin.scenario)|\
           (^tempest.api.compute.servers.test_attach_interfaces)|\
           (^tempest.api.compute.servers.test_multiple_create)"
+      tempest_exclude_regex: "\
+          (^neutron_tempest_plugin.scenario.test_mtu.NetworkWritableMtuTest)"
       network_api_extensions: *api_extensions
+      network_api_extensions_ovn:
+        - vlan-transparent
       devstack_localrc:
-        NETWORK_API_EXTENSIONS: "{{ network_api_extensions | join(',') }}"
+        NETWORK_API_EXTENSIONS: "{{ (network_api_extensions + network_api_extensions_ovn) | join(',') }}"
       devstack_local_conf:
         test-config:
           $TEMPEST_CONFIG:
@@ -165,43 +181,57 @@
               available_features: ""
 
 - job:
-    name: neutron-tempest-plugin-dvr-multinode-scenario-wallaby
+    name: neutron-tempest-plugin-dvr-multinode-scenario-zed
     parent: neutron-tempest-plugin-dvr-multinode-scenario
-    override-checkout: stable/wallaby
+    override-checkout: stable/zed
     vars:
       network_api_extensions_common: *api_extensions
 
 - job:
-    name: neutron-tempest-plugin-designate-scenario-wallaby
+    name: neutron-tempest-plugin-designate-scenario-zed
     parent: neutron-tempest-plugin-designate-scenario
-    override-checkout: stable/wallaby
+    override-checkout: stable/zed
     vars:
       network_api_extensions_common: *api_extensions
 
 - job:
-    name: neutron-tempest-plugin-sfc-wallaby
+    name: neutron-tempest-plugin-sfc-zed
     parent: neutron-tempest-plugin-sfc
-    override-checkout: stable/wallaby
+    override-checkout: stable/zed
     vars:
       network_api_extensions_common: *api_extensions
 
 - job:
-    name: neutron-tempest-plugin-bgpvpn-bagpipe-wallaby
+    name: neutron-tempest-plugin-bgpvpn-bagpipe-zed
     parent: neutron-tempest-plugin-bgpvpn-bagpipe
-    override-checkout: stable/wallaby
+    override-checkout: stable/zed
     vars:
       network_api_extensions: *api_extensions
 
 - job:
-    name: neutron-tempest-plugin-dynamic-routing-wallaby
+    name: neutron-tempest-plugin-dynamic-routing-zed
     parent: neutron-tempest-plugin-dynamic-routing
-    override-checkout: stable/wallaby
+    override-checkout: stable/zed
     vars:
       network_api_extensions_common: *api_extensions
 
 - job:
-    name: neutron-tempest-plugin-vpnaas-wallaby
+    name: neutron-tempest-plugin-fwaas-zed
+    parent: neutron-tempest-plugin-fwaas
+    override-checkout: stable/zed
+    vars:
+      network_api_extensions_common: *api_extensions
+
+- job:
+    name: neutron-tempest-plugin-vpnaas-zed
     parent: neutron-tempest-plugin-vpnaas
-    override-checkout: stable/wallaby
+    override-checkout: stable/zed
+    vars:
+      network_api_extensions_common: *api_extensions
+
+- job:
+    name: neutron-tempest-plugin-tap-as-a-service-zed
+    parent: neutron-tempest-plugin-tap-as-a-service
+    override-checkout: stable/zed
     vars:
       network_api_extensions_common: *api_extensions

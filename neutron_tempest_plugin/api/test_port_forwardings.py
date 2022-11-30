@@ -128,12 +128,17 @@ class PortForwardingTestJSON(base.BaseNetworkTest):
         # Check that all PFs are visible in Floating IP details
         fip = self.client.show_floatingip(fip_id)['floatingip']
         self.assertEqual(len(created_pfs), len(fip['port_forwardings']))
+        detail_enabled = utils.is_extension_enabled(
+            'floating-ip-port-forwarding-detail', service='network')
         for pf in created_pfs:
             expected_pf = {
                 'external_port': pf['external_port'],
                 'internal_port': pf['internal_port'],
                 'protocol': pf['protocol'],
                 'internal_ip_address': pf['internal_ip_address']}
+            if detail_enabled:
+                expected_pf['id'] = pf['id']
+                expected_pf['internal_port_id'] = pf['internal_port_id']
             self.assertIn(expected_pf, fip['port_forwardings'])
 
         # Test list of port forwardings

@@ -1,7 +1,7 @@
 - job:
-    name: neutron-tempest-plugin-api-wallaby
+    name: neutron-tempest-plugin-api-yoga
     parent: neutron-tempest-plugin-base
-    override-checkout: stable/wallaby
+    override-checkout: stable/yoga
     vars:
       tempest_concurrency: 4
       tempest_test_regex: ^neutron_tempest_plugin\.api
@@ -20,6 +20,7 @@
         - dhcp_agent_scheduler
         - dns-domain-ports
         - dns-integration
+        - dns-integration-domain-keywords
         - empty-string-filtering
         - expose-port-forwarding-in-fip
         - expose-l3-conntrack-helper
@@ -47,7 +48,9 @@
         - network_availability_zone
         - network-segment-range
         - pagination
+        - port-device-profile
         - port-resource-request
+        - port-resource-request-groups
         - port-mac-address-regenerate
         - port-security
         - port-security-groups-filtering
@@ -76,6 +79,7 @@
         - standard-attr-segment
         - standard-attr-tag
         - standard-attr-timestamp
+        - stateful-security-group
         - subnet_allocation
         - subnet-dns-publish-fixed-ip
         - subnet-service-types
@@ -90,9 +94,9 @@
         - ipv6_metadata
 
 - job:
-    name: neutron-tempest-plugin-scenario-openvswitch-wallaby
+    name: neutron-tempest-plugin-scenario-openvswitch-yoga
     parent: neutron-tempest-plugin-openvswitch
-    override-checkout: stable/wallaby
+    override-checkout: stable/yoga
     vars:
       tempest_test_regex: "\
           (^neutron_tempest_plugin.scenario)|\
@@ -101,7 +105,7 @@
       network_api_extensions: *api_extensions
       network_available_features: *available_features
       devstack_localrc:
-        NETWORK_API_EXTENSIONS: "{{ network_api_extensions | join(',') }}"
+        NETWORK_API_EXTENSIONS: "{{ (network_api_extensions + network_api_extensions_openvswitch) | join(',') }}"
       devstack_local_conf:
         test-config:
           $TEMPEST_CONFIG:
@@ -109,9 +113,9 @@
               available_features: "{{ network_available_features | join(',') }}"
 
 - job:
-    name: neutron-tempest-plugin-scenario-openvswitch-iptables_hybrid-wallaby
+    name: neutron-tempest-plugin-scenario-openvswitch-iptables_hybrid-yoga
     parent: neutron-tempest-plugin-openvswitch-iptables_hybrid
-    override-checkout: stable/wallaby
+    override-checkout: stable/yoga
     vars:
       tempest_test_regex: "\
           (^neutron_tempest_plugin.scenario)|\
@@ -120,7 +124,7 @@
       network_api_extensions: *api_extensions
       network_available_features: *available_features
       devstack_localrc:
-        NETWORK_API_EXTENSIONS: "{{ network_api_extensions | join(',') }}"
+        NETWORK_API_EXTENSIONS: "{{ (network_api_extensions + network_api_extensions_openvswitch) | join(',') }}"
       devstack_local_conf:
         test-config:
           $TEMPEST_CONFIG:
@@ -128,9 +132,9 @@
               available_features: "{{ network_available_features | join(',') }}"
 
 - job:
-    name: neutron-tempest-plugin-scenario-linuxbridge-wallaby
+    name: neutron-tempest-plugin-scenario-linuxbridge-yoga
     parent: neutron-tempest-plugin-linuxbridge
-    override-checkout: stable/wallaby
+    override-checkout: stable/yoga
     vars:
       tempest_test_regex: "\
           (^neutron_tempest_plugin.scenario)|\
@@ -147,17 +151,19 @@
               available_features: "{{ network_available_features | join(',') }}"
 
 - job:
-    name: neutron-tempest-plugin-scenario-ovn-wallaby
+    name: neutron-tempest-plugin-scenario-ovn-yoga
     parent: neutron-tempest-plugin-ovn
-    override-checkout: stable/wallaby
+    override-checkout: stable/yoga
     vars:
       tempest_test_regex: "\
           (^neutron_tempest_plugin.scenario)|\
           (^tempest.api.compute.servers.test_attach_interfaces)|\
           (^tempest.api.compute.servers.test_multiple_create)"
       network_api_extensions: *api_extensions
+      network_api_extensions_ovn:
+        - vlan-transparent
       devstack_localrc:
-        NETWORK_API_EXTENSIONS: "{{ network_api_extensions | join(',') }}"
+        NETWORK_API_EXTENSIONS: "{{ (network_api_extensions + network_api_extensions_ovn) | join(',') }}"
       devstack_local_conf:
         test-config:
           $TEMPEST_CONFIG:
@@ -165,43 +171,50 @@
               available_features: ""
 
 - job:
-    name: neutron-tempest-plugin-dvr-multinode-scenario-wallaby
+    name: neutron-tempest-plugin-dvr-multinode-scenario-yoga
     parent: neutron-tempest-plugin-dvr-multinode-scenario
-    override-checkout: stable/wallaby
+    override-checkout: stable/yoga
     vars:
       network_api_extensions_common: *api_extensions
 
 - job:
-    name: neutron-tempest-plugin-designate-scenario-wallaby
+    name: neutron-tempest-plugin-designate-scenario-yoga
     parent: neutron-tempest-plugin-designate-scenario
-    override-checkout: stable/wallaby
+    override-checkout: stable/yoga
     vars:
       network_api_extensions_common: *api_extensions
 
 - job:
-    name: neutron-tempest-plugin-sfc-wallaby
+    name: neutron-tempest-plugin-sfc-yoga
     parent: neutron-tempest-plugin-sfc
-    override-checkout: stable/wallaby
+    override-checkout: stable/yoga
     vars:
       network_api_extensions_common: *api_extensions
 
 - job:
-    name: neutron-tempest-plugin-bgpvpn-bagpipe-wallaby
+    name: neutron-tempest-plugin-bgpvpn-bagpipe-yoga
     parent: neutron-tempest-plugin-bgpvpn-bagpipe
-    override-checkout: stable/wallaby
+    override-checkout: stable/yoga
     vars:
       network_api_extensions: *api_extensions
 
 - job:
-    name: neutron-tempest-plugin-dynamic-routing-wallaby
+    name: neutron-tempest-plugin-dynamic-routing-yoga
     parent: neutron-tempest-plugin-dynamic-routing
-    override-checkout: stable/wallaby
+    override-checkout: stable/yoga
     vars:
       network_api_extensions_common: *api_extensions
 
 - job:
-    name: neutron-tempest-plugin-vpnaas-wallaby
+    name: neutron-tempest-plugin-vpnaas-yoga
     parent: neutron-tempest-plugin-vpnaas
-    override-checkout: stable/wallaby
+    override-checkout: stable/yoga
+    vars:
+      network_api_extensions_common: *api_extensions
+
+- job:
+    name: neutron-tempest-plugin-tap-as-a-service-yoga
+    parent: neutron-tempest-plugin-tap-as-a-service
+    override-checkout: stable/yoga
     vars:
       network_api_extensions_common: *api_extensions

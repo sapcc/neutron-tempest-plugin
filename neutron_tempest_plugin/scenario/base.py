@@ -12,7 +12,7 @@
 #    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 #    License for the specific language governing permissions and limitations
 #    under the License.
-import distutils
+
 import re
 import subprocess
 
@@ -21,6 +21,7 @@ import netaddr
 from neutron_lib.api import validators
 from neutron_lib import constants as neutron_lib_constants
 from oslo_log import log
+from packaging import version as packaging_version
 from paramiko import ssh_exception as ssh_exc
 from tempest.common.utils import net_utils
 from tempest.common import waiters
@@ -38,8 +39,11 @@ from neutron_tempest_plugin import exceptions
 from neutron_tempest_plugin.scenario import constants
 
 CONF = config.CONF
-
 LOG = log.getLogger(__name__)
+SSH_EXC_TUPLE = (lib_exc.SSHTimeout,
+                 ssh_exc.AuthenticationException,
+                 ssh_exc.NoValidConnectionsError,
+                 ConnectionResetError)
 
 
 def get_ncat_version(ssh_client=None):
@@ -52,7 +56,7 @@ def get_ncat_version(ssh_client=None):
         m = re.match(r"Ncat: Version ([\d.]+) *.", version_result)
     # NOTE(slaweq): by default lets assume we have ncat 7.60 which is in Ubuntu
     # 18.04 which is used on u/s gates
-    return distutils.version.StrictVersion(m.group(1) if m else '7.60')
+    return packaging_version.Version(m.group(1) if m else '7.60')
 
 
 def get_ncat_server_cmd(port, protocol, msg=None):
@@ -76,7 +80,7 @@ def get_ncat_client_cmd(ip_address, port, protocol):
         udp = '-u'
     cmd = 'echo "knock knock" | nc '
     ncat_version = get_ncat_version()
-    if ncat_version > distutils.version.StrictVersion('7.60'):
+    if ncat_version > packaging_version.Version('7.60'):
         cmd += '-z '
     cmd += '-w 1 %(udp)s %(host)s %(port)s' % {
         'udp': udp, 'host': ip_address, 'port': port}
@@ -308,7 +312,7 @@ class BaseTempestTestCase(base_api.BaseNetworkTest):
                                     pkey=ssh_key, timeout=ssh_timeout)
         try:
             ssh_client.test_connection_auth()
-        except (lib_exc.SSHTimeout, ssh_exc.AuthenticationException) as ssh_e:
+        except SSH_EXC_TUPLE as ssh_e:
             LOG.debug(ssh_e)
             self._log_console_output(servers)
             self._log_local_network_status()
@@ -448,7 +452,7 @@ class BaseTempestTestCase(base_api.BaseNetworkTest):
                 timeout=timeout, pattern=pattern,
                 forbid_packet_loss=forbid_packet_loss,
                 check_response_ip=check_response_ip))
-        except (lib_exc.SSHTimeout, ssh_exc.AuthenticationException) as ssh_e:
+        except SSH_EXC_TUPLE as ssh_e:
             LOG.debug(ssh_e)
             self._log_console_output(servers)
             self._log_local_network_status()
@@ -565,7 +569,7 @@ class BaseTempestTestCase(base_api.BaseNetworkTest):
                     **kwargs)
                 self.assertIn(server['name'],
                               ssh_client.get_hostname())
-        except (lib_exc.SSHTimeout, ssh_exc.AuthenticationException) as ssh_e:
+        except SSH_EXC_TUPLE as ssh_e:
             LOG.debug(ssh_e)
             if log_errors:
                 self._log_console_output(servers)
@@ -600,7 +604,7 @@ class BaseTempestTestCase(base_api.BaseNetworkTest):
             return ssh_client.execute_script(
                 get_ncat_server_cmd(port, protocol, echo_msg),
                 become_root=True, combine_stderr=True)
-        except (lib_exc.SSHTimeout, ssh_exc.AuthenticationException) as ssh_e:
+        except SSH_EXC_TUPLE as ssh_e:
             LOG.debug(ssh_e)
             self._log_console_output(servers)
             self._log_local_network_status()
@@ -615,3 +619,38 @@ class BaseTempestTestCase(base_api.BaseNetworkTest):
         result = shell.execute_local_command(cmd)
         self.assertEqual(0, result.exit_status)
         return result.stdout
+
+    def _ensure_public_router(self, client=None, tenant_id=None):
+        """Retrieve a router for the given tenant id.
+
+        If a public router has been configured, it will be returned.
+
+        If a public router has not been configured, but a public
+        network has, a tenant router will be created and returned that
+        routes traffic to the public network.
+        """
+        if not client:
+            client = self.client
+        if not tenant_id:
+            tenant_id = client.tenant_id
+        router_id = CONF.network.public_router_id
+        network_id = CONF.network.public_network_id
+        if router_id:
+            body = client.show_router(router_id)
+            return body['router']
+        elif network_id:
+            router = self.create_router_by_client()
+            self.addCleanup(test_utils.call_and_ignore_notfound_exc,
+                            client.delete_router, router['id'])
+            kwargs = {'external_gateway_info': dict(network_id=network_id)}
+            router = client.update_router(router['id'], **kwargs)['router']
+            return router
+        else:
+            raise Exception("Neither of 'public_router_id' or "
+                            "'public_network_id' has been defined.")
+
+    def _update_router_admin_state(self, router, admin_state_up):
+        kwargs = dict(admin_state_up=admin_state_up)
+        router = self.client.update_router(
+            router['id'], **kwargs)['router']
+        self.assertEqual(admin_state_up, router['admin_state_up'])

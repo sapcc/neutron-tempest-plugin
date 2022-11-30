@@ -1103,8 +1103,8 @@ class TestBGPVPNBasic(base.BaseBgpvpnTest, manager.NetworkScenarioTest):
         self._check_l3_bgpvpn(should_succeed=False)
 
     def _create_security_group_for_test(self):
-        self.security_group = self._create_security_group(
-            tenant_id=self.bgpvpn_client.tenant_id)
+        self.security_group = self.create_security_group(
+            project_id=self.bgpvpn_client.project_id)
 
     def _create_networks_and_subnets(self, names=None, subnet_cidrs=None,
                                      port_security=True):
@@ -1113,8 +1113,9 @@ class TestBGPVPNBasic(base.BaseBgpvpnTest, manager.NetworkScenarioTest):
         if not subnet_cidrs:
             subnet_cidrs = [[NET_A_S1], [NET_B_S1], [NET_C_S1]]
         for (name, subnet_cidrs) in zip(names, subnet_cidrs):
-            network = self._create_network(
-                namestart=name, port_security_enabled=port_security)
+            network = super(manager.NetworkScenarioTest,
+                            self).create_network(namestart=name,
+                    port_security_enabled=port_security)
             self.networks[name] = network
             self.subnets[name] = []
             for (j, cidr) in enumerate(subnet_cidrs):
@@ -1181,9 +1182,12 @@ class TestBGPVPNBasic(base.BaseBgpvpnTest, manager.NetworkScenarioTest):
         create_port_body = {'fixed_ips': [{'ip_address': ip_address}],
                             'namestart': 'port-smoke',
                             'security_groups': security_groups}
-        port = self._create_port(network_id=network['id'],
-                                 client=clients.ports_client,
-                                 **create_port_body)
+
+        port = super(manager.NetworkScenarioTest,
+                    self).create_port(network_id=network['id'],
+                                    client=clients.ports_client,
+                                    **create_port_body)
+
         create_server_kwargs = {
             'key_name': keypair['name'],
             'networks': [{'uuid': network['id'], 'port': port['id']}]
@@ -1255,7 +1259,8 @@ class TestBGPVPNBasic(base.BaseBgpvpnTest, manager.NetworkScenarioTest):
         private_key = self.servers_keypairs[server['id']][
             'private_key']
         ssh_client = self.get_remote_client(server_fip,
-                                            private_key=private_key)
+                                            private_key=private_key,
+                                            server=server)
         return ssh_client
 
     def _setup_http_server(self, server_index):

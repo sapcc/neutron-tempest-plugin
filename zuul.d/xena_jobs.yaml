@@ -1,8 +1,10 @@
 - job:
     name: neutron-tempest-plugin-api-xena
-    parent: neutron-tempest-plugin-api
+    parent: neutron-tempest-plugin-base
     override-checkout: stable/xena
     vars:
+      tempest_concurrency: 4
+      tempest_test_regex: ^neutron_tempest_plugin\.api
       # TODO(slaweq): find a way to put this list of extensions in
       # neutron repository and keep it different per branch,
       # then it could be removed from here
@@ -91,10 +93,13 @@
 
 - job:
     name: neutron-tempest-plugin-scenario-openvswitch-xena
-    parent: neutron-tempest-plugin-scenario-openvswitch
+    parent: neutron-tempest-plugin-openvswitch
     override-checkout: stable/xena
     vars:
-      branch_override: stable/xena
+      tempest_test_regex: "\
+          (^neutron_tempest_plugin.scenario)|\
+          (^tempest.api.compute.servers.test_attach_interfaces)|\
+          (^tempest.api.compute.servers.test_multiple_create)"
       network_api_extensions: *api_extensions
       network_available_features: *available_features
       devstack_localrc:
@@ -107,10 +112,13 @@
 
 - job:
     name: neutron-tempest-plugin-scenario-openvswitch-iptables_hybrid-xena
-    parent: neutron-tempest-plugin-scenario-openvswitch-iptables_hybrid
-    override-checkout: stable-xena
+    parent: neutron-tempest-plugin-openvswitch-iptables_hybrid
+    override-checkout: stable/xena
     vars:
-      branch_override: stable-xena
+      tempest_test_regex: "\
+          (^neutron_tempest_plugin.scenario)|\
+          (^tempest.api.compute.servers.test_attach_interfaces)|\
+          (^tempest.api.compute.servers.test_multiple_create)"
       network_api_extensions: *api_extensions
       network_available_features: *available_features
       devstack_localrc:
@@ -123,10 +131,13 @@
 
 - job:
     name: neutron-tempest-plugin-scenario-linuxbridge-xena
-    parent: neutron-tempest-plugin-scenario-linuxbridge
+    parent: neutron-tempest-plugin-linuxbridge
     override-checkout: stable/xena
     vars:
-      branch_override: stable/xena
+      tempest_test_regex: "\
+          (^neutron_tempest_plugin.scenario)|\
+          (^tempest.api.compute.servers.test_attach_interfaces)|\
+          (^tempest.api.compute.servers.test_multiple_create)"
       network_api_extensions: *api_extensions
       network_available_features: *available_features
       devstack_localrc:
@@ -139,10 +150,13 @@
 
 - job:
     name: neutron-tempest-plugin-scenario-ovn-xena
-    parent: neutron-tempest-plugin-scenario-ovn
+    parent: neutron-tempest-plugin-ovn
     override-checkout: stable/xena
     vars:
-      branch_override: stable/xena
+      tempest_test_regex: "\
+          (^neutron_tempest_plugin.scenario)|\
+          (^tempest.api.compute.servers.test_attach_interfaces)|\
+          (^tempest.api.compute.servers.test_multiple_create)"
       network_api_extensions: *api_extensions
       devstack_localrc:
         NETWORK_API_EXTENSIONS: "{{ network_api_extensions | join(',') }}"
@@ -158,14 +172,12 @@
     override-checkout: stable/xena
     vars:
       network_api_extensions_common: *api_extensions
-      branch_override: stable/xena
 
 - job:
     name: neutron-tempest-plugin-designate-scenario-xena
     parent: neutron-tempest-plugin-designate-scenario
     override-checkout: stable/xena
     vars:
-      branch_override: stable/xena
       network_api_extensions_common: *api_extensions
 
 - job:
@@ -173,7 +185,6 @@
     parent: neutron-tempest-plugin-sfc
     override-checkout: stable/xena
     vars:
-      branch_override: stable/xena
       network_api_extensions_common: *api_extensions
 
 - job:
@@ -181,7 +192,6 @@
     parent: neutron-tempest-plugin-bgpvpn-bagpipe
     override-checkout: stable/xena
     vars:
-      branch_override: stable/xena
       network_api_extensions: *api_extensions
 
 - job:
@@ -189,7 +199,6 @@
     parent: neutron-tempest-plugin-dynamic-routing
     override-checkout: stable/xena
     vars:
-      branch_override: stable/xena
       network_api_extensions_common: *api_extensions
 
 - job:
@@ -197,7 +206,6 @@
     parent: neutron-tempest-plugin-vpnaas
     override-checkout: stable/xena
     vars:
-      branch_override: stable/xena
       network_api_extensions_common: *api_extensions
 
 - job:
@@ -205,5 +213,4 @@
     parent: neutron-tempest-plugin-tap-as-a-service
     override-checkout: stable/xena
     vars:
-      branch_override: stable/xena
       network_api_extensions_common: *api_extensions

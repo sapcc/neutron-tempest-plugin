@@ -1,6 +1,6 @@
 - job:
     name: neutron-tempest-plugin-api-train
-    parent: neutron-tempest-plugin-api
+    parent: neutron-tempest-plugin-base
     nodeset: openstack-single-node-bionic
     override-checkout: stable/train
     required-projects: &required-projects-train
@@ -24,7 +24,8 @@
         q-l3: true
         q-meta: true
         q-metering: true
-      branch_override: stable/train
+      tempest_concurrency: 4
+      tempest_test_regex: ^neutron_tempest_plugin\.api
       # TODO(slaweq): find a way to put this list of extensions in
       # neutron repository and keep it different per branch,
       # then it could be removed from here
@@ -102,6 +103,12 @@
       network_available_features: &available_features
         -
       devstack_localrc:
+        # NOTE(bcafarel) guestmount binary not available on host OS
+        IMAGE_URLS: https://cloud-images.ubuntu.com/releases/bionic/release/ubuntu-18.04-server-cloudimg-amd64.img
+        ADVANCED_IMAGE_NAME: ubuntu-18.04-server-cloudimg-amd64
+        ADVANCED_INSTANCE_TYPE: ds512M
+        ADVANCED_INSTANCE_USER: ubuntu
+        CUSTOMIZE_IMAGE: false
         NEUTRON_DEPLOY_MOD_WSGI: false
         NETWORK_API_EXTENSIONS: "{{ (network_api_extensions_common + network_api_extensions_tempest) | join(',') }}"
         Q_AGENT: openvswitch
@@ -125,12 +132,15 @@
 
 - job:
     name: neutron-tempest-plugin-scenario-openvswitch-train
-    parent: neutron-tempest-plugin-scenario-openvswitch
+    parent: neutron-tempest-plugin-openvswitch
     nodeset: openstack-single-node-bionic
     override-checkout: stable/train
     required-projects: *required-projects-train
     vars:
-      branch_override: stable/train
+      tempest_test_regex: "\
+          (^neutron_tempest_plugin.scenario)|\
+          (^tempest.api.compute.servers.test_attach_interfaces)|\
+          (^tempest.api.compute.servers.test_multiple_create)"
       network_api_extensions: *api_extensions
       network_available_features: *available_features
       devstack_localrc:
@@ -156,12 +166,15 @@
 
 - job:
     name: neutron-tempest-plugin-scenario-openvswitch-iptables_hybrid-train
-    parent: neutron-tempest-plugin-scenario-openvswitch-iptables_hybrid
+    parent: neutron-tempest-plugin-openvswitch-iptables_hybrid
     nodeset: openstack-single-node-bionic
     override-checkout: stable/train
     required-projects: *required-projects-train
     vars:
-      branch_override: stable/train
+      tempest_test_regex: "\
+          (^neutron_tempest_plugin.scenario)|\
+          (^tempest.api.compute.servers.test_attach_interfaces)|\
+          (^tempest.api.compute.servers.test_multiple_create)"
       network_api_extensions: *api_extensions
       network_available_features: *available_features
       devstack_localrc:
@@ -187,12 +200,15 @@
 
 - job:
     name: neutron-tempest-plugin-scenario-linuxbridge-train
-    parent: neutron-tempest-plugin-scenario-linuxbridge
+    parent: neutron-tempest-plugin-linuxbridge
     nodeset: openstack-single-node-bionic
     override-checkout: stable/train
     required-projects: *required-projects-train
     vars:
-      branch_override: stable/train
+      tempest_test_regex: "\
+          (^neutron_tempest_plugin.scenario)|\
+          (^tempest.api.compute.servers.test_attach_interfaces)|\
+          (^tempest.api.compute.servers.test_multiple_create)"
       network_api_extensions: *api_extensions
       network_available_features: *available_features
       devstack_localrc:
@@ -224,7 +240,6 @@
     required-projects: *required-projects-train
     vars:
       network_api_extensions_common: *api_extensions
-      branch_override: stable/train
 
 - job:
     name: neutron-tempest-plugin-designate-scenario-train
@@ -239,7 +254,6 @@
       - name: openstack/designate-tempest-plugin
         override-checkout: 0.7.0
     vars:
-      branch_override: stable/train
       network_api_extensions_common: *api_extensions
       devstack_localrc:
         # NOTE(bcafarel) guestmount binary not available on host OS
@@ -256,7 +270,6 @@
     override-checkout: stable/train
     required-projects: *required-projects-train
     vars:
-      branch_override: stable/train
       network_api_extensions_common: *api_extensions
 
 - job:
@@ -266,7 +279,6 @@
     override-checkout: stable/train
     required-projects: *required-projects-train
     vars:
-      branch_override: stable/train
       network_api_extensions: *api_extensions
 
 - job:
@@ -276,5 +288,4 @@
     override-checkout: stable/train
     required-projects: *required-projects-train
     vars:
-      branch_override: stable/train
       network_api_extensions_common: *api_extensions

@@ -1,6 +1,6 @@
 - job:
     name: neutron-tempest-plugin-api-stein
-    parent: neutron-tempest-plugin-api
+    parent: neutron-tempest-plugin-base
     nodeset: openstack-single-node-bionic
     override-checkout: stable/stein
     required-projects: &required-projects-stein
@@ -24,7 +24,8 @@
         q-l3: true
         q-meta: true
         q-metering: true
-      branch_override: stable/stein
+      tempest_concurrency: 4
+      tempest_test_regex: ^neutron_tempest_plugin\.api
       # TODO(slaweq): find a way to put this list of extensions in
       # neutron repository and keep it different per branch,
       # then it could be removed from here
@@ -111,6 +112,8 @@
         Q_ML2_TENANT_NETWORK_TYPE: vxlan
         Q_ML2_PLUGIN_MECHANISM_DRIVERS: openvswitch
         ML2_L3_PLUGIN: router
+        ADVANCED_INSTANCE_TYPE: ds512M
+        ADVANCED_INSTANCE_USER: ubuntu
       devstack_local_conf:
         post-config:
           # NOTE(slaweq): We can get rid of this hardcoded absolute path when
@@ -128,12 +131,15 @@
 
 - job:
     name: neutron-tempest-plugin-scenario-openvswitch-stein
-    parent: neutron-tempest-plugin-scenario-openvswitch
+    parent: neutron-tempest-plugin-openvswitch
     nodeset: openstack-single-node-bionic
     override-checkout: stable/stein
     required-projects: *required-projects-stein
     vars:
-      branch_override: stable/stein
+      tempest_test_regex: "\
+          (^neutron_tempest_plugin.scenario)|\
+          (^tempest.api.compute.servers.test_attach_interfaces)|\
+          (^tempest.api.compute.servers.test_multiple_create)"
       network_api_extensions: *api_extensions
       network_available_features: *available_features
       tempest_black_regex: *stein_tempest_exclude
@@ -160,13 +166,16 @@
 
 - job:
     name: neutron-tempest-plugin-scenario-openvswitch-iptables_hybrid-stein
-    parent: neutron-tempest-plugin-scenario
+    parent: neutron-tempest-plugin-base
     nodeset: openstack-single-node-bionic
     timeout: 10000
     override-checkout: stable/stein
     required-projects: *required-projects-stein
     vars:
-      branch_override: stable/stein
+      tempest_test_regex: "\
+          (^neutron_tempest_plugin.scenario)|\
+          (^tempest.api.compute.servers.test_attach_interfaces)|\
+          (^tempest.api.compute.servers.test_multiple_create)"
       devstack_services:
         # Disable OVN services
         br-ex-tcpdump: false
@@ -247,7 +256,7 @@
 
 - job:
     name: neutron-tempest-plugin-scenario-linuxbridge-stein
-    parent: neutron-tempest-plugin-scenario
+    parent: neutron-tempest-plugin-base
     nodeset: openstack-single-node-bionic
     timeout: 10000
     roles:
@@ -256,7 +265,10 @@
     override-checkout: stable/stein
     required-projects: *required-projects-stein
     vars:
-      branch_override: stable/stein
+      tempest_test_regex: "\
+          (^neutron_tempest_plugin.scenario)|\
+          (^tempest.api.compute.servers.test_attach_interfaces)|\
+          (^tempest.api.compute.servers.test_multiple_create)"
       devstack_services:
         # Disable OVN services
         br-ex-tcpdump: false
@@ -272,6 +284,8 @@
         q-l3: true
         q-meta: true
         q-metering: true
+        # SG logging isn't supported by linuxbridge backend
+        neutron-log: false
       network_api_extensions: *api_extensions
       network_api_extensions_linuxbridge:
         - vlan-transparent
@@ -345,7 +359,6 @@
     required-projects: *required-projects-stein
     vars:
       network_api_extensions_common: *api_extensions
-      branch_override: stable/stein
 
 - job:
     name: neutron-tempest-plugin-designate-scenario-stein
@@ -360,7 +373,6 @@
         override-checkout: 0.7.0
       - openstack/tempest
     vars:
-      branch_override: stable/stein
       network_api_extensions_common: *api_extensions
       devstack_localrc:
         # NOTE(bcafarel) guestmount binary not available on host OS
