@@ -13,20 +13,21 @@
     name: neutron-tempest-plugin-base-nested-switch
     parent: neutron-tempest-plugin-base
     abstract: true
-    branches: ^(?!stable/(queens|rocky|stein|train|ussuri)).*$
+    branches: ^(?!stable/(train|ussuri|victoria|wallaby)).*$
     # Comment nodeset and vars to switch back to non nested nodes
     nodeset: neutron-nested-virt-ubuntu-focal
     vars:
       devstack_localrc:
         LIBVIRT_TYPE: kvm
-        LIBVIRT_CPU_MODE: host-passthrough
-        CIRROS_VERSION: 0.5.1
-        DEFAULT_IMAGE_NAME: cirros-0.5.1-x86_64-disk
-        DEFAULT_IMAGE_FILE_NAME: cirros-0.5.1-x86_64-disk.img
+        # cirros 0.6.1 not booting when host-passthrough is used
+        # LIBVIRT_CPU_MODE: host-passthrough
+        CIRROS_VERSION: 0.6.1
+        DEFAULT_IMAGE_NAME: cirros-0.6.1-x86_64-disk
+        DEFAULT_IMAGE_FILE_NAME: cirros-0.6.1-x86_64-disk.img
 
 # Base nested switch job for EM releases
 - job:
-    name: neutron-tempest-plugin-scenario-nested-switch
+    name: neutron-tempest-plugin-base-nested-switch
     parent: neutron-tempest-plugin-base
     abstract: true
-    branches: ^(stable/(queens|rocky|stein|train|ussuri)).*$
+    branches: ^(stable/(train|ussuri|victoria|wallaby)).*$

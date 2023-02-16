@@ -23,61 +23,6 @@
 
 
 - project-template:
-    name: neutron-tempest-plugin-jobs-queens
-    check:
-      jobs:
-        - neutron-tempest-plugin-api-queens
-        - neutron-tempest-plugin-scenario-linuxbridge-queens
-        - neutron-tempest-plugin-scenario-openvswitch-queens
-    gate:
-      jobs:
-        - neutron-tempest-plugin-api-queens
-    #TODO(slaweq): Move neutron-tempest-plugin-dvr-multinode-scenario out of
-    #              the experimental queue when it will be more stable
-    experimental:
-      jobs:
-        - neutron-tempest-plugin-dvr-multinode-scenario-queens
-
-
-- project-template:
-    name: neutron-tempest-plugin-jobs-rocky
-    check:
-      jobs:
-        - neutron-tempest-plugin-api-rocky
-        - neutron-tempest-plugin-scenario-linuxbridge-rocky
-        - neutron-tempest-plugin-scenario-openvswitch-rocky
-        - neutron-tempest-plugin-scenario-openvswitch-iptables_hybrid-rocky
-        - neutron-tempest-plugin-designate-scenario-rocky
-    gate:
-      jobs:
-        - neutron-tempest-plugin-api-rocky
-    #TODO(slaweq): Move neutron-tempest-plugin-dvr-multinode-scenario out of
-    #              the experimental queue when it will be more stable
-    experimental:
-      jobs:
-        - neutron-tempest-plugin-dvr-multinode-scenario-rocky
-
-
-- project-template:
-    name: neutron-tempest-plugin-jobs-stein
-    check:
-      jobs:
-        - neutron-tempest-plugin-api-stein
-        - neutron-tempest-plugin-scenario-linuxbridge-stein
-        - neutron-tempest-plugin-scenario-openvswitch-stein
-        - neutron-tempest-plugin-scenario-openvswitch-iptables_hybrid-stein
-        - neutron-tempest-plugin-designate-scenario-stein
-    gate:
-      jobs:
-        - neutron-tempest-plugin-api-stein
-    #TODO(slaweq): Move neutron-tempest-plugin-dvr-multinode-scenario out of
-    #              the experimental queue when it will be more stable
-    experimental:
-      jobs:
-        - neutron-tempest-plugin-dvr-multinode-scenario-stein
-
-
-- project-template:
     name: neutron-tempest-plugin-jobs-train
     check:
       jobs:
@@ -85,7 +30,6 @@
         - neutron-tempest-plugin-scenario-linuxbridge-train
         - neutron-tempest-plugin-scenario-openvswitch-train
         - neutron-tempest-plugin-scenario-openvswitch-iptables_hybrid-train
-        - neutron-tempest-plugin-designate-scenario-train
     gate:
       jobs:
         - neutron-tempest-plugin-api-train
@@ -216,7 +160,6 @@
     templates:
       - build-openstack-docs-pti
       - neutron-tempest-plugin-jobs
-      - neutron-tempest-plugin-jobs-wallaby
       - neutron-tempest-plugin-jobs-xena
       - neutron-tempest-plugin-jobs-yoga
       - neutron-tempest-plugin-jobs-zed
@@ -226,24 +169,20 @@
     check:
       jobs:
         - neutron-tempest-plugin-sfc
-        - neutron-tempest-plugin-sfc-wallaby
         - neutron-tempest-plugin-sfc-xena
         - neutron-tempest-plugin-sfc-yoga
         - neutron-tempest-plugin-sfc-zed
         - neutron-tempest-plugin-bgpvpn-bagpipe
-        - neutron-tempest-plugin-bgpvpn-bagpipe-wallaby
         - neutron-tempest-plugin-bgpvpn-bagpipe-xena
         - neutron-tempest-plugin-bgpvpn-bagpipe-yoga
         - neutron-tempest-plugin-bgpvpn-bagpipe-zed
         - neutron-tempest-plugin-dynamic-routing
-        - neutron-tempest-plugin-dynamic-routing-wallaby
         - neutron-tempest-plugin-dynamic-routing-xena
         - neutron-tempest-plugin-dynamic-routing-yoga
         - neutron-tempest-plugin-dynamic-routing-zed
         - neutron-tempest-plugin-fwaas
         - neutron-tempest-plugin-fwaas-zed
         - neutron-tempest-plugin-vpnaas
-        - neutron-tempest-plugin-vpnaas-wallaby
         - neutron-tempest-plugin-vpnaas-xena
         - neutron-tempest-plugin-vpnaas-yoga
         - neutron-tempest-plugin-vpnaas-zed

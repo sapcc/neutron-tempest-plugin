@@ -27,9 +27,9 @@
         NETWORK_API_EXTENSIONS: "{{ (network_api_extensions_common + network_api_extensions_tempest) | join(',') }}"
         PHYSICAL_NETWORK: public
         IMAGE_URLS: https://cloud-images.ubuntu.com/minimal/releases/focal/release/ubuntu-20.04-minimal-cloudimg-amd64.img
-        CIRROS_VERSION: 0.5.1
-        DEFAULT_IMAGE_NAME: cirros-0.5.1-x86_64-uec
-        DEFAULT_IMAGE_FILE_NAME: cirros-0.5.1-x86_64-uec.tar.gz
+        CIRROS_VERSION: 0.6.1
+        DEFAULT_IMAGE_NAME: cirros-0.6.1-x86_64-uec
+        DEFAULT_IMAGE_FILE_NAME: cirros-0.6.1-x86_64-uec.tar.gz
         ADVANCED_IMAGE_NAME: ubuntu-20.04-minimal-cloudimg-amd64
         ADVANCED_INSTANCE_TYPE: ntp_image_256M
         ADVANCED_INSTANCE_USER: ubuntu
@@ -164,9 +164,6 @@
               quota_floatingip: 500
               quota_security_group: 150
               quota_security_group_rule: 1000
-          # NOTE(slaweq): We can get rid of this hardcoded absolute path when
-          # devstack-tempest job will be switched to use lib/neutron instead of
-          # lib/neutron-legacy
           /$NEUTRON_CORE_PLUGIN_CONF:
             ml2:
               type_drivers: flat,geneve,vlan,gre,local,vxlan
@@ -256,9 +253,6 @@
             DEFAULT:
               enable_dvr: false
               l3_ha: true
-          # NOTE(slaweq): We can get rid of this hardcoded absolute path when
-          # devstack-tempest job will be switched to use lib/neutron instead of
-          # lib/neutron-legacy
           /$NEUTRON_CORE_PLUGIN_CONF:
             agent:
               tunnel_types: vxlan,gre
@@ -344,7 +338,8 @@
       # bug https://bugzilla.redhat.com/show_bug.cgi?id=1965036 will be fixed
       tempest_exclude_regex: "\
           (^neutron_tempest_plugin.scenario.test_trunk.TrunkTest.test_subport_connectivity)|\
-          (^neutron_tempest_plugin.scenario.test_security_groups.NetworkSecGroupTest.test_established_tcp_session_after_re_attachinging_sg)"
+          (^neutron_tempest_plugin.scenario.test_security_groups.StatefulNetworkSecGroupTest.test_established_tcp_session_after_re_attachinging_sg)|\
+          (^neutron_tempest_plugin.scenario.test_security_groups.StatelessNetworkSecGroupTest.test_established_tcp_session_after_re_attachinging_sg)"
       devstack_localrc:
         Q_AGENT: openvswitch
         Q_ML2_TENANT_NETWORK_TYPE: vxlan
@@ -356,9 +351,6 @@
             DEFAULT:
               enable_dvr: false
               l3_ha: true
-          # NOTE(slaweq): We can get rid of this hardcoded absolute path when
-          # devstack-tempest job will be switched to use lib/neutron instead of
-          # lib/neutron-legacy
           /$NEUTRON_CORE_PLUGIN_CONF:
             agent:
               tunnel_types: vxlan,gre
@@ -496,7 +488,8 @@
       # fixed
       tempest_exclude_regex: "\
           (^neutron_tempest_plugin.scenario.test_vlan_transparency.VlanTransparencyTest)|\
-          (^neutron_tempest_plugin.scenario.test_security_groups.NetworkSecGroupTest.test_established_tcp_session_after_re_attachinging_sg)|\
+          (^neutron_tempest_plugin.scenario.test_security_groups.StatefulNetworkSecGroupTest.test_established_tcp_session_after_re_attachinging_sg)|\
+          (^neutron_tempest_plugin.scenario.test_security_groups.StatelessNetworkSecGroupTest.test_established_tcp_session_after_re_attachinging_sg)|\
           (^neutron_tempest_plugin.scenario.test_floatingip.FloatingIPPortDetailsTest.test_floatingip_port_details)"
       devstack_localrc:
         Q_AGENT: linuxbridge
@@ -514,9 +507,6 @@
               debug_iptables_rules: true
             EXPERIMENTAL:
               linuxbridge: true
-          # NOTE(slaweq): We can get rid of this hardcoded absolute path when
-          # devstack-tempest job will be switched to use lib/neutron instead of
-          # lib/neutron-legacy
           /$NEUTRON_CORE_PLUGIN_CONF:
             ml2:
               type_drivers: flat,vlan,local,vxlan
@@ -594,14 +584,6 @@
         Q_ML2_PLUGIN_TYPE_DRIVERS: local,flat,vlan,geneve
         Q_ML2_TENANT_NETWORK_TYPE: geneve
         Q_USE_PROVIDERNET_FOR_PUBLIC: true
-        # NOTE(slaweq): In the job with OVN backend we can't use Ubuntu minimal
-        # image because kernel in that image don't supports MULTICAST traffic
-        # thus multicast scenario test with IGMP snooping enabled would fail
-        IMAGE_URLS: https://cloud-images.ubuntu.com/releases/bionic/release/ubuntu-18.04-server-cloudimg-amd64.img
-        ADVANCED_IMAGE_NAME: ubuntu-18.04-server-cloudimg-amd64
-        ADVANCED_INSTANCE_TYPE: ntp_image_384M
-        ADVANCED_INSTANCE_USER: ubuntu
-        CUSTOMIZE_IMAGE: false
         ENABLE_CHASSIS_AS_GW: true
         OVN_L3_CREATE_PUBLIC_NETWORK: true
         OVN_DBS_LOG_LEVEL: dbg
@@ -742,9 +724,9 @@
         USE_PYTHON3: true
         NETWORK_API_EXTENSIONS: "{{ (network_api_extensions_common + network_api_extensions_dvr) | join(',') }}"
         PHYSICAL_NETWORK: default
-        CIRROS_VERSION: 0.5.1
-        DEFAULT_IMAGE_NAME: cirros-0.5.1-x86_64-uec
-        DEFAULT_IMAGE_FILE_NAME: cirros-0.5.1-x86_64-uec.tar.gz
+        CIRROS_VERSION: 0.6.1
+        DEFAULT_IMAGE_NAME: cirros-0.6.1-x86_64-uec
+        DEFAULT_IMAGE_FILE_NAME: cirros-0.6.1-x86_64-uec.tar.gz
         IMAGE_URLS: https://cloud-images.ubuntu.com/minimal/releases/focal/release/ubuntu-20.04-minimal-cloudimg-amd64.img
         ADVANCED_IMAGE_NAME: ubuntu-20.04-minimal-cloudimg-amd64
         ADVANCED_INSTANCE_TYPE: ntp_image_256M
@@ -803,9 +785,6 @@
               quota_security_group_rule: 1000
             DEFAULT:
               router_distributed: True
-          # NOTE(slaweq): We can get rid of this hardcoded absolute path when
-          # devstack-tempest job will be switched to use lib/neutron instead of
-          # lib/neutron-legacy
           "/$NEUTRON_CORE_PLUGIN_CONF":
             ml2:
               type_drivers: flat,geneve,vlan,gre,local,vxlan
@@ -885,9 +864,6 @@
             $NEUTRON_CONF:
               DEFAULT:
                 router_distributed: True
-            # NOTE(slaweq): We can get rid of this hardcoded absolute path when
-            # devstack-tempest job will be switched to use lib/neutron instead of
-            # lib/neutron-legacy
             "/$NEUTRON_CORE_PLUGIN_CONF":
               agent:
                 enable_distributed_routing: True
@@ -992,6 +968,11 @@
         - flow_classifier
         - sfc
       devstack_localrc:
+        # TODO(slaweq): check why traceroute output is different in Cirros >
+        # 0.6.1 which is causing failures of the networking-sfc jobs
+        CIRROS_VERSION: 0.5.1
+        DEFAULT_IMAGE_NAME: cirros-0.5.1-x86_64-uec
+        DEFAULT_IMAGE_FILE_NAME: cirros-0.5.1-x86_64-uec.tar.gz
         Q_AGENT: openvswitch
         Q_ML2_TENANT_NETWORK_TYPE: vxlan
         Q_ML2_PLUGIN_MECHANISM_DRIVERS: openvswitch
@@ -1297,11 +1278,6 @@
         - taas-vlan-filter
       devstack_localrc:
         NETWORK_API_EXTENSIONS: "{{ (network_api_extensions_common + network_api_extensions_tempest) | join(',') }}"
-        IMAGE_URLS: https://cloud-images.ubuntu.com/releases/bionic/release/ubuntu-18.04-server-cloudimg-amd64.img
-        ADVANCED_IMAGE_NAME: ubuntu-18.04-server-cloudimg-amd64
-        ADVANCED_INSTANCE_TYPE: ntp_image_384M
-        ADVANCED_INSTANCE_USER: ubuntu
-        CUSTOMIZE_IMAGE: false
         BUILD_TIMEOUT: 784
         Q_AGENT: openvswitch
         Q_ML2_TENANT_NETWORK_TYPE: vxlan,vlan
