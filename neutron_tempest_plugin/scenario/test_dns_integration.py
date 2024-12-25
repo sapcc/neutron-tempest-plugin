@@ -17,9 +17,11 @@ import ipaddress
 
 import testtools
 
+from oslo_log import log
 from tempest.common import utils
 from tempest.common import waiters
 from tempest.lib.common.utils import data_utils
+from tempest.lib.common.utils import test_utils
 from tempest.lib import decorators
 from tempest.lib import exceptions as lib_exc
 
@@ -30,11 +32,15 @@ from neutron_tempest_plugin.scenario import constants
 
 
 CONF = config.CONF
+LOG = log.getLogger(__name__)
+
 
 # Note(jh): Need to do a bit of juggling here in order to avoid failures
 # when designate_tempest_plugin is not available
 dns_base = testtools.try_import('designate_tempest_plugin.tests.base')
 dns_waiters = testtools.try_import('designate_tempest_plugin.common.waiters')
+dns_data_utils = testtools.try_import('designate_tempest_plugin.data_utils')
+
 if dns_base:
     DNSMixin = dns_base.BaseDnsV2Test
 else:
@@ -47,8 +53,9 @@ class BaseDNSIntegrationTests(base.BaseTempestTestCase, DNSMixin):
     @classmethod
     def setup_clients(cls):
         super(BaseDNSIntegrationTests, cls).setup_clients()
-        cls.dns_client = cls.os_tempest.dns_v2.ZonesClient()
-        cls.query_client.build_timeout = 30
+        cls.zone_client = cls.os_tempest.dns_v2.ZonesClient()
+        cls.recordset_client = cls.os_tempest.dns_v2.RecordsetClient()
+        cls.query_client.build_timeout = 60
 
     @classmethod
     def skip_checks(cls):
@@ -63,12 +70,13 @@ class BaseDNSIntegrationTests(base.BaseTempestTestCase, DNSMixin):
     @utils.requires_ext(extension="dns-integration", service="network")
     def resource_setup(cls):
         super(BaseDNSIntegrationTests, cls).resource_setup()
-        _, cls.zone = cls.dns_client.create_zone()
-        cls.addClassResourceCleanup(cls.dns_client.delete_zone,
-            cls.zone['id'], ignore_errors=lib_exc.NotFound)
-        dns_waiters.wait_for_zone_status(
-            cls.dns_client, cls.zone['id'], 'ACTIVE')
-
+        cls.zone_name = dns_data_utils.rand_zone_name(
+            name="basednsintegrationtests")
+        cls.zone = cls.zone_client.create_zone(
+            name=cls.zone_name, wait_until='ACTIVE')[1]
+        cls.addClassResourceCleanup(
+            cls.zone_client.delete_zone, cls.zone['id'],
+            ignore_errors=lib_exc.NotFound)
         cls.network = cls.create_network(dns_domain=cls.zone['name'])
         cls.subnet = cls.create_subnet(cls.network)
         cls.subnet_v6 = cls.create_subnet(cls.network, ip_version=6)
@@ -94,12 +102,79 @@ class BaseDNSIntegrationTests(base.BaseTempestTestCase, DNSMixin):
         fip = self.create_floatingip(port=port)
         return {'port': port, 'fip': fip, 'server': server}
 
+    def _check_type_in_recordsets(self, zone_id, rec_type):
+        types = [rec['type'] for rec in self.recordset_client.list_recordset(
+            zone_id)[1]['recordsets']]
+        if rec_type in types:
+            return True
+        return False
+
+    def _wait_for_type_in_recordsets(self, zone_id, type):
+        test_utils.call_until_true(
+            func=self._check_type_in_recordsets, zone_id=zone_id,
+            rec_type=type, duration=self.query_client.build_timeout,
+            sleep_for=5)
+
+    def _check_recordset_deleted(
+            self, recordset_client, zone_id, recordset_id):
+        return test_utils.call_and_ignore_notfound_exc(
+            recordset_client.show_recordset, zone_id, recordset_id) is None
+
+    def _verify_designate_recordset(
+            self, address, found=True, record_type='A'):
+        if found:
+            self._wait_for_type_in_recordsets(self.zone['id'], record_type)
+            recordsets = self.recordset_client.list_recordset(
+                self.zone['id'])[1]['recordsets']
+            relevant_type = [rec for rec in recordsets if
+                             rec['type'] == record_type]
+            self.assertTrue(
+                relevant_type,
+                'Failed no {} type recordset has been detected in the '
+                'Designate DNS DB'.format(record_type))
+            rec_id = [rec['id'] for rec in relevant_type if address in
+                      str(rec['records'])][0]
+            self.assertTrue(
+                rec_id, 'Record of type:{} with IP:{} was not detected in '
+                        'the Designate DNS DB'.format(record_type, address))
+            dns_waiters.wait_for_recordset_status(
+                self.recordset_client, self.zone['id'], rec_id, 'ACTIVE')
+        else:
+            rec_id = None
+            recordsets = self.recordset_client.list_recordset(
+                self.zone['id'])[1]['recordsets']
+            relevant_type = [rec for rec in recordsets if
+                             rec['type'] == record_type]
+            if relevant_type:
+                rec_id = [rec['id'] for rec in relevant_type if
+                          address in str(rec['records'])][0]
+            if rec_id:
+                recordset_exists = test_utils.call_until_true(
+                    func=self._check_recordset_deleted,
+                    recordset_client=self.recordset_client,
+                    zone_id=self.zone['id'], recordset_id=rec_id,
+                    duration=self.query_client.build_timeout, sleep_for=5)
+                self.assertTrue(
+                    recordset_exists,
+                    'Failed, recordset type:{} and ID:{} is still exist in '
+                    'the Designate DNS DB'.format(record_type, rec_id))
+
     def _verify_dns_records(self, address, name, found=True, record_type='A'):
         client = self.query_client
         forward = name + '.' + self.zone['name']
         reverse = ipaddress.ip_address(address).reverse_pointer
-        dns_waiters.wait_for_query(client, forward, record_type, found)
-        dns_waiters.wait_for_query(client, reverse, 'PTR', found)
+        record_types_to_check = [record_type, 'PTR']
+        for rec_type in record_types_to_check:
+            try:
+                if rec_type == 'PTR':
+                    dns_waiters.wait_for_query(
+                        client, reverse, rec_type, found)
+                else:
+                    dns_waiters.wait_for_query(
+                        client, forward, rec_type, found)
+            except Exception as e:
+                LOG.error(e)
+                self._verify_designate_recordset(address, found, rec_type)
         if not found:
             return
         fwd_response = client.query(forward, record_type)
@@ -140,11 +215,10 @@ class DNSIntegrationAdminTests(BaseDNSIntegrationTests,
     @classmethod
     def resource_setup(cls):
         super(DNSIntegrationAdminTests, cls).resource_setup()
-        # TODO(jh): We should add the segmentation_id as tempest option
-        # so that it can be changed to match the deployment if needed
-        cls.network2 = cls.create_network(dns_domain=cls.zone['name'],
-                provider_network_type='vxlan',
-                provider_segmentation_id=12345)
+        segmentation_id = CONF.designate_feature_enabled.segmentation_id
+        cls.network2 = cls.create_network(
+            dns_domain=cls.zone['name'], provider_network_type='vxlan',
+            provider_segmentation_id=segmentation_id)
         cls.subnet2 = cls.create_subnet(cls.network2)
 
     def _verify_dns_assignment(self, port):
@@ -179,8 +253,9 @@ class DNSIntegrationExtraTests(BaseDNSIntegrationTests):
     @classmethod
     def resource_setup(cls):
         super(DNSIntegrationExtraTests, cls).resource_setup()
-        cls.network2 = cls.create_network()
-        cls.subnet2 = cls.create_subnet(cls.network2)
+        cls.network2 = cls.create_network(
+            name=data_utils.rand_name('dns_integration_net'))
+        cls.subnet2 = cls.create_subnet(cls.network2, cidr='10.123.151.0/24')
         cls.subnet2_v6 = cls.create_subnet(cls.network2,
                                            ip_version=6,
                                            dns_publish_fixed_ip=True)
@@ -203,6 +278,16 @@ class DNSIntegrationExtraTests(BaseDNSIntegrationTests):
         self.client.delete_port(port['id'])
         self._verify_dns_records(addr_v6, name, record_type='AAAA',
                                  found=False)
+        self.client.update_subnet(
+            self.subnet2['id'], dns_publish_fixed_ip=True)
+        port = self.create_port(self.network2,
+                                dns_domain=self.zone['name'],
+                                dns_name=name)
+        addr_v4 = port['fixed_ips'][1 - v6_index]['ip_address']
+        self._verify_dns_records(addr_v4, name, record_type='A')
+        self.client.delete_port(port['id'])
+        self._verify_dns_records(addr_v4, name, record_type='A',
+                                 found=False)
 
 
 class DNSIntegrationDomainPerProjectTests(BaseDNSIntegrationTests):
@@ -215,19 +300,15 @@ class DNSIntegrationDomainPerProjectTests(BaseDNSIntegrationTests):
     @classmethod
     def resource_setup(cls):
         super(BaseDNSIntegrationTests, cls).resource_setup()
-
-        name = data_utils.rand_name('test-domain')
-        zone_name = "%s.%s.%s.zone." % (cls.client.user_id,
-                                        cls.client.tenant_id,
-                                        name)
-        dns_domain_template = "<user_id>.<project_id>.%s.zone." % name
-
-        _, cls.zone = cls.dns_client.create_zone(name=zone_name)
-        cls.addClassResourceCleanup(cls.dns_client.delete_zone,
+        cls.name = data_utils.rand_name('test-domain')
+        cls.zone_name = "%s.%s.%s.zone." % (cls.client.user_id,
+                                            cls.client.project_id,
+                                            cls.name)
+        dns_domain_template = "<user_id>.<project_id>.%s.zone." % cls.name
+        cls.zone = cls.zone_client.create_zone(
+            name=cls.zone_name, wait_until='ACTIVE')[1]
+        cls.addClassResourceCleanup(cls.zone_client.delete_zone,
             cls.zone['id'], ignore_errors=lib_exc.NotFound)
-        dns_waiters.wait_for_zone_status(
-            cls.dns_client, cls.zone['id'], 'ACTIVE')
-
         cls.network = cls.create_network(dns_domain=dns_domain_template)
         cls.subnet = cls.create_subnet(cls.network,
                                        dns_publish_fixed_ip=True)
