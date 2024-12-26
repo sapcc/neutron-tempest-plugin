@@ -55,7 +55,6 @@ class BaseDNSIntegrationTests(base.BaseTempestTestCase, DNSMixin):
         super(BaseDNSIntegrationTests, cls).setup_clients()
         cls.zone_client = cls.os_tempest.dns_v2.ZonesClient()
         cls.recordset_client = cls.os_tempest.dns_v2.RecordsetClient()
-        cls.query_client.build_timeout = 60
 
     @classmethod
     def skip_checks(cls):
