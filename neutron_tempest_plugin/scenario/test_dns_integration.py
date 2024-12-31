@@ -53,8 +53,8 @@ class BaseDNSIntegrationTests(base.BaseTempestTestCase, DNSMixin):
     @classmethod
     def setup_clients(cls):
         super(BaseDNSIntegrationTests, cls).setup_clients()
-        cls.zone_client = cls.os_primary.dns_v2.ZonesClient()
-        cls.recordset_client = cls.os_primary.dns_v2.RecordsetClient()
+        cls.zone_client = cls.os_admin.dns_v2.ZonesClient()
+        cls.recordset_client = cls.os_admin.dns_v2.RecordsetClient()
 
     @classmethod
     def skip_checks(cls):
