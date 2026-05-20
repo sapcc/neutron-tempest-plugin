@@ -167,8 +167,9 @@ class SubnetPoolsNegativeTestJSON(test_subnetpools.SubnetPoolsTestBase):
         address_scope = self.create_address_scope(
             name=data_utils.rand_name('smoke-address-scope'), is_admin=True,
             ip_version=4)
-        self.assertRaises(lib_exc.NotFound, self._create_subnetpool,
-                          address_scope_id=address_scope['id'])
+        self.assertRaises(lib_exc.Forbidden, self._create_subnetpool,
+                          address_scope_id=address_scope['id'],
+                          client=self.client)
 
     @decorators.attr(type='negative')
     @decorators.idempotent_id('3396ec6c-cb80-4ebe-b897-84e904580bdf')
