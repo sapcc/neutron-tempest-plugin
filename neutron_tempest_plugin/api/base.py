@@ -901,14 +901,20 @@ class BaseNetworkTest(test.BaseTestCase):
             body = cls.admin_client.create_address_scope(name=name, **kwargs)
             cls.admin_address_scopes.append(body['address_scope'])
         else:
-            body = cls.client.create_address_scope(name=name, **kwargs)
+            body = cls.admin_client.create_address_scope(name=name,
+                                                         tenant_id=cls.client.tenant_id,
+                                                         **kwargs)
             cls.address_scopes.append(body['address_scope'])
         return body['address_scope']
 
     @classmethod
     def create_subnetpool(cls, name, is_admin=False, client=None, **kwargs):
         if client is None:
-            client = cls.admin_client if is_admin else cls.client
+            if is_admin:
+                client = cls.admin_client
+            else:
+                client = cls.admin_client
+                kwargs.setdefault('tenant_id', cls.client.tenant_id)
 
         if is_admin:
             body = client.create_subnetpool(name, **kwargs)
