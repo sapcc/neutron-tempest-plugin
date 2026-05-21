@@ -37,10 +37,7 @@ class AddressScopeTestBase(base.BaseAdminNetworkTest):
         address_scope = self._create_address_scope(is_admin=is_admin,
                                                    ip_version=4)
 
-        if is_admin:
-            client = self.admin_client
-        else:
-            client = self.client
+        client = self.admin_client
 
         kwargs = {'name': 'new_name'}
         if shared is not None:
@@ -96,8 +93,9 @@ class AddressScopeTest(AddressScopeTestBase):
     @decorators.idempotent_id('22b3b600-72a8-4b60-bc94-0f29dd6271df')
     def test_delete_address_scope(self):
         address_scope = self._create_address_scope(ip_version=4)
-        self.client.delete_address_scope(address_scope['id'])
-        self.assertRaises(lib_exc.NotFound, self.client.show_address_scope,
+        self.admin_client.delete_address_scope(address_scope['id'])
+        self.assertRaises(lib_exc.NotFound,
+                          self.admin_client.show_address_scope,
                           address_scope['id'])
 
     @decorators.idempotent_id('5a06c287-8036-4d04-9d78-def8e06d43df')
