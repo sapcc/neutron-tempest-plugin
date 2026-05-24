@@ -244,7 +244,7 @@ class BaseNetworkTest(test.BaseTestCase):
                                          client=cls.admin_client)
 
             for subnetpool in cls.subnetpools:
-                cls._try_delete_resource(cls.client.delete_subnetpool,
+                cls._try_delete_resource(cls.admin_client.delete_subnetpool,
                                          subnetpool['id'])
 
             for subnetpool in cls.admin_subnetpools:
@@ -252,7 +252,7 @@ class BaseNetworkTest(test.BaseTestCase):
                                          subnetpool['id'])
 
             for address_scope in cls.address_scopes:
-                cls._try_delete_resource(cls.client.delete_address_scope,
+                cls._try_delete_resource(cls.admin_client.delete_address_scope,
                                          address_scope['id'])
 
             for address_scope in cls.admin_address_scopes:
@@ -311,6 +311,9 @@ class BaseNetworkTest(test.BaseTestCase):
         # if resource is not found, this means it was deleted in the test
         except lib_exc.NotFound:
             pass
+        except lib_exc.Forbidden:
+            LOG.warning("Forbidden when deleting resource, args=%s kwargs=%s",
+                        args, kwargs)
 
     @classmethod
     def create_network(cls, network_name=None, client=None, external=None,
