@@ -15,6 +15,7 @@
 from tempest.lib.common.utils import data_utils
 from tempest.lib import decorators
 from tempest.lib import exceptions as lib_exc
+import testtools
 
 from neutron_tempest_plugin.api import test_address_scopes
 
@@ -23,18 +24,24 @@ class AddressScopeTestNegative(test_address_scopes.AddressScopeTestBase):
 
     @decorators.attr(type='negative')
     @decorators.idempotent_id('9c92ec34-0c50-4104-aa47-9ce98d5088df')
+    @testtools.skip("Custom policy: create_address_scope restricted to admin, "
+                    "proxied via admin_client so Forbidden is not reachable")
     def test_tenant_create_shared_address_scope(self):
         self.assertRaises(lib_exc.Forbidden, self._create_address_scope,
                           shared=True, ip_version=4)
 
     @decorators.attr(type='negative')
     @decorators.idempotent_id('a857b61e-bf53-4fab-b21a-b0daaf81b5bd')
+    @testtools.skip("Custom policy: update_address_scope restricted to admin, "
+                    "proxied via admin_client so Forbidden is not reachable")
     def test_tenant_update_address_scope_shared_true(self):
         self.assertRaises(lib_exc.Forbidden,
                           self._test_update_address_scope_helper, shared=True)
 
     @decorators.attr(type='negative')
     @decorators.idempotent_id('a859ef2f-9c76-4e2e-ba0f-e0339a489e8c')
+    @testtools.skip("Custom policy: update_address_scope restricted to admin, "
+                    "proxied via admin_client so Forbidden is not reachable")
     def test_tenant_update_address_scope_shared_false(self):
         self.assertRaises(lib_exc.Forbidden,
                           self._test_update_address_scope_helper, shared=False)
@@ -88,5 +95,5 @@ class AddressScopeTestNegative(test_address_scopes.AddressScopeTestBase):
             'min_prefixlen': '29', 'prefixes': prefixes,
             'address_scope_id': address_scope['id']}
         self.create_subnetpool(**subnetpool_data)
-        self.assertRaises(lib_exc.Conflict, self.client.delete_address_scope,
+        self.assertRaises(lib_exc.Conflict, self.admin_client.delete_address_scope,
                           address_scope['id'])
