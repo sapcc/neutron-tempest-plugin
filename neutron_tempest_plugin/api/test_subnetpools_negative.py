@@ -55,20 +55,28 @@ class SubnetPoolsNegativeTestJSON(test_subnetpools.SubnetPoolsTestBase):
 
     @decorators.attr(type='negative')
     @decorators.idempotent_id('d1143fe2-212b-4e23-a308-d18f7d8d78d6')
-    @testtools.skip("Custom policy: create_subnetpool restricted to admin, "
-                    "proxied via admin_client so Forbidden is not reachable")
     def test_tenant_create_shared_subnetpool(self):
         # 'shared' subnetpool can only be created by admin.
-        self.assertRaises(lib_exc.Forbidden, self._create_subnetpool,
-                          is_admin=False, shared=True)
+        self.assertRaises(
+            lib_exc.Forbidden,
+            self.client.create_subnetpool,
+            data_utils.rand_name('smoke-subnetpool'),
+            prefixes=self._subnetpool_data['prefixes'],
+            min_prefixlen=self._subnetpool_data['min_prefixlen'],
+            shared=True)
 
     @decorators.attr(type='negative')
     @decorators.idempotent_id('6ae09d8f-95be-40ed-b1cf-8b850d45bab5')
     @utils.requires_ext(extension='default-subnetpools', service='network')
     def test_tenant_create_default_subnetpool(self):
         # 'default' subnetpool can only be created by admin.
-        self.assertRaises(lib_exc.Forbidden, self._create_subnetpool,
-                          is_admin=False, is_default=True)
+        self.assertRaises(
+            lib_exc.Forbidden,
+            self.client.create_subnetpool,
+            data_utils.rand_name('smoke-subnetpool'),
+            prefixes=self._subnetpool_data['prefixes'],
+            min_prefixlen=self._subnetpool_data['min_prefixlen'],
+            is_default=True)
 
     @decorators.attr(type='negative')
     @decorators.idempotent_id('4be84d30-60ca-4bd3-8512-db5b36ce1378')

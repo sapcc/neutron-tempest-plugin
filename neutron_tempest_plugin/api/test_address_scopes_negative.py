@@ -24,27 +24,30 @@ class AddressScopeTestNegative(test_address_scopes.AddressScopeTestBase):
 
     @decorators.attr(type='negative')
     @decorators.idempotent_id('9c92ec34-0c50-4104-aa47-9ce98d5088df')
-    @testtools.skip("Custom policy: create_address_scope restricted to admin, "
-                    "proxied via admin_client so Forbidden is not reachable")
     def test_tenant_create_shared_address_scope(self):
-        self.assertRaises(lib_exc.Forbidden, self._create_address_scope,
-                          shared=True, ip_version=4)
+        self.assertRaises(
+            lib_exc.Forbidden,
+            self.client.create_address_scope,
+            name=data_utils.rand_name('smoke-address-scope'),
+            shared=True, ip_version=4)
 
     @decorators.attr(type='negative')
     @decorators.idempotent_id('a857b61e-bf53-4fab-b21a-b0daaf81b5bd')
-    @testtools.skip("Custom policy: update_address_scope restricted to admin, "
-                    "proxied via admin_client so Forbidden is not reachable")
     def test_tenant_update_address_scope_shared_true(self):
-        self.assertRaises(lib_exc.Forbidden,
-                          self._test_update_address_scope_helper, shared=True)
+        address_scope = self._create_address_scope(ip_version=4)
+        self.assertRaises(
+            lib_exc.Forbidden,
+            self.client.update_address_scope,
+            address_scope['id'], shared=True)
 
     @decorators.attr(type='negative')
     @decorators.idempotent_id('a859ef2f-9c76-4e2e-ba0f-e0339a489e8c')
-    @testtools.skip("Custom policy: update_address_scope restricted to admin, "
-                    "proxied via admin_client so Forbidden is not reachable")
     def test_tenant_update_address_scope_shared_false(self):
-        self.assertRaises(lib_exc.Forbidden,
-                          self._test_update_address_scope_helper, shared=False)
+        address_scope = self._create_address_scope(ip_version=4)
+        self.assertRaises(
+            lib_exc.Forbidden,
+            self.client.update_address_scope,
+            address_scope['id'], shared=False)
 
     @decorators.attr(type='negative')
     @decorators.idempotent_id('9b6dd7ad-cabb-4f55-bd5e-e61176ef41f6')

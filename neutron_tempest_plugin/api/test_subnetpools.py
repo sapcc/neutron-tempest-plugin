@@ -234,7 +234,9 @@ class SubnetPoolsTest(SubnetPoolsTestBase):
 
     @decorators.idempotent_id('86b86189-9789-4582-9c3b-7e2bfe5735ee')
     def test_create_subnet_from_pool_with_subnet_cidr(self):
-        subnet_values = {"cidr": self.subnet_cidr}
+        subnet_values = {"cidr": self.subnet_cidr,
+                         "enable_dhcp": False,
+                         }
         pool_id, subnet = self._create_subnet_from_pool(
             subnet_values=subnet_values)
         cidr = str(subnet['cidr'])
