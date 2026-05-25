@@ -55,6 +55,8 @@ class SubnetPoolsNegativeTestJSON(test_subnetpools.SubnetPoolsTestBase):
 
     @decorators.attr(type='negative')
     @decorators.idempotent_id('d1143fe2-212b-4e23-a308-d18f7d8d78d6')
+    @testtools.skip("Custom policy: create_subnetpool restricted to admin, "
+                    "proxied via admin_client so Forbidden is not reachable")
     def test_tenant_create_shared_subnetpool(self):
         # 'shared' subnetpool can only be created by admin.
         self.assertRaises(lib_exc.Forbidden, self._create_subnetpool,
@@ -278,7 +280,7 @@ class SubnetPoolsNegativeTestJSON(test_subnetpools.SubnetPoolsTestBase):
             name=data_utils.rand_name('smoke-address-scope'),
             ip_version=6)
         created_subnetpool = self._create_subnetpool()
-        self.assertRaises(lib_exc.BadRequest, self.client.update_subnetpool,
+        self.assertRaises(lib_exc.BadRequest, self.admin_client.update_subnetpool,
                           created_subnetpool['id'],
                           address_scope_id=address_scope['id'])
 

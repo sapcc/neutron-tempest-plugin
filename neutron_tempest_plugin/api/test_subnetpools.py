@@ -283,8 +283,8 @@ class SubnetPoolsTest(SubnetPoolsTestBase):
         pool_id = created_subnetpool['id']
         body = self.client.show_subnetpool(pool_id)
         self.assertIsNone(body['subnetpool']['address_scope_id'])
-        self.client.update_subnetpool(pool_id,
-                                      address_scope_id=address_scope['id'])
+        self.admin_client.update_subnetpool(pool_id,
+                                            address_scope_id=address_scope['id'])
         body = self.client.show_subnetpool(pool_id)
         self.assertEqual(address_scope['id'],
                          body['subnetpool']['address_scope_id'])
@@ -304,7 +304,7 @@ class SubnetPoolsTest(SubnetPoolsTestBase):
         body = self.client.show_subnetpool(pool_id)
         self.assertEqual(address_scope['id'],
                          body['subnetpool']['address_scope_id'])
-        self.client.update_subnetpool(
+        self.admin_client.update_subnetpool(
             pool_id, address_scope_id=another_address_scope['id'])
         body = self.client.show_subnetpool(pool_id)
         self.assertEqual(another_address_scope['id'],
@@ -322,9 +322,9 @@ class SubnetPoolsTest(SubnetPoolsTestBase):
         body = self.client.show_subnetpool(pool_id)
         self.assertEqual(address_scope['id'],
                          body['subnetpool']['address_scope_id'])
-        self.client.update_subnetpool(pool_id,
-                                      address_scope_id=None)
-        body = self.client.show_subnetpool(pool_id)
+        self.admin_client.update_subnetpool(pool_id,
+                                            address_scope_id=None)
+        body = self.admin_client.show_subnetpool(pool_id)
         self.assertIsNone(body['subnetpool']['address_scope_id'])
 
     @decorators.idempotent_id('4c6963c2-f54c-4347-b288-75d18421c4c4')

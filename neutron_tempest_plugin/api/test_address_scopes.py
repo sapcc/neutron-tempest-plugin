@@ -159,13 +159,14 @@ class RbacAddressScopeTest(AddressScopeTestBase):
             data_utils.rand_name("rbac-address-scope"),
             default_prefixlen=24, prefixes=['10.0.0.0/8'],
             address_scope_id=res['address_scope']['id'],
-            client=self.client2
+            client=self.admin_client,
+            tenant_id=self.client2.tenant_id,
         )
         self.addCleanup(
             self.admin_client.delete_rbac_policy,
             res['rbac_policy']['id']
         )
-        self.addCleanup(self.client2.delete_subnetpool, snp['id'])
+        self.addCleanup(self.admin_client.delete_subnetpool, snp['id'])
 
         # a port with shared sg should prevent the deletion of an
         # rbac-policy required for it to be shared
