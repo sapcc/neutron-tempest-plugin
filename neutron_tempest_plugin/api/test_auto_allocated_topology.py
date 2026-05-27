@@ -92,7 +92,10 @@ class TestAutoAllocatedTopology(base.BaseAdminNetworkTest):
             self.client.tenant_id)
         topology = body[auto_allocated_topology.RESOURCE_NAME]
         self.assertIsNotNone(topology)
-        self._add_topology_cleanup(self.admin_client)  # <- тоже admin
+
+        self.addCleanup(
+            self.admin_client.delete_auto_allocated_topology,
+            self.client.tenant_id)
 
         network_id1 = topology['id']
         self.assertIsNotNone(network_id1)
