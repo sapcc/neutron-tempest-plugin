@@ -15,11 +15,8 @@
 from tempest.lib.common.utils import data_utils
 from tempest.lib import decorators
 from tempest.lib import exceptions
-import testscenarios
 
 from neutron_tempest_plugin.api import base
-
-load_tests = testscenarios.load_tests_apply_scenarios
 
 
 class LoggingTestJSON(base.BaseAdminNetworkTest):
@@ -95,6 +92,6 @@ class LoggingTestJSON(base.BaseAdminNetworkTest):
         # Delete SG
         self.delete_security_group(security_group)
 
-        # Ensure log is also deleted TODO enable it after neutron update
-        #self.assertRaises(exceptions.NotFound,
-        #                  self.admin_client.show_log, log['id'])
+        # Ensure log is also deleted # TODO reanable after neutron update
+        # self.assertRaises(exceptions.NotFound,
+        #                   self.admin_client.show_log, log['id'])

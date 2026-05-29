@@ -68,6 +68,21 @@ class BaseNetworkTest(test.BaseTestCase):
 
     external_network_id = CONF.network.public_network_id
 
+    __is_driver_ovn = None
+
+    @classmethod
+    def _is_driver_ovn(cls):
+        ovn_agents = cls.os_admin.network_client.list_agents(
+            binary='ovn-controller')['agents']
+        return len(ovn_agents) > 0
+
+    @property
+    def is_driver_ovn(self):
+        if self.__is_driver_ovn is None:
+            if hasattr(self, 'os_admin'):
+                self.__is_driver_ovn = self._is_driver_ovn()
+        return self.__is_driver_ovn
+
     @classmethod
     def get_client_manager(cls, credential_type=None, roles=None,
                            force_new=None):
@@ -135,6 +150,7 @@ class BaseNetworkTest(test.BaseTestCase):
         cls.admin_subnetpools = []
         cls.security_groups = []
         cls.admin_security_groups = []
+        cls.sg_rule_templates = []
         cls.projects = []
         cls.log_objects = []
         cls.reserved_subnet_cidrs = set()
@@ -637,6 +653,13 @@ class BaseNetworkTest(test.BaseTestCase):
                                               *args, **kwargs)
 
     @classmethod
+    def _list_router_interfaces(cls, client, router_id):
+        body = client.list_router_interfaces(router_id)
+        interfaces = [port for port in body['ports']
+                      if port['device_owner'] in const.ROUTER_INTERFACE_OWNERS]
+        return interfaces
+
+    @classmethod
     def create_floatingip(cls, external_network_id=None, port=None,
                           client=None, **kwargs):
         """Creates a floating IP.
@@ -1028,6 +1051,13 @@ class BaseNetworkTest(test.BaseTestCase):
         raise ValueError("No such security group named {!r}".format(name))
 
     @classmethod
+    def create_default_security_group_rule(cls, **kwargs):
+        body = cls.admin_client.create_default_security_group_rule(**kwargs)
+        default_sg_rule = body['default_security_group_rule']
+        cls.sg_rule_templates.append(default_sg_rule)
+        return default_sg_rule
+
+    @classmethod
     def create_keypair(cls, client=None, name=None, **kwargs):
         client = client or cls.os_primary.keypairs_client
         name = name or data_utils.rand_name('keypair-test')
@@ -1191,6 +1221,16 @@ class BaseNetworkTest(test.BaseTestCase):
         """
         client = client or ndp_proxy.get('client') or cls.client
         client.delete_ndp_proxy(ndp_proxy['id'])
+
+    @classmethod
+    def get_loaded_network_extensions(cls):
+        """Return the network service loaded extensions
+
+        :return: list of strings with the alias of the network service loaded
+                 extensions.
+        """
+        body = cls.client.list_extensions()
+        return [net_ext['alias'] for net_ext in body['extensions']]
 
 
 class BaseAdminNetworkTest(BaseNetworkTest):
@@ -1426,6 +1466,10 @@ class BaseSearchCriteriaTest(BaseNetworkTest):
     @classmethod
     def _extract_resources(cls, body):
         return body[cls.plural_name]
+
+    @classmethod
+    def _test_resources(cls, resources):
+        return [res for res in resources if res["name"] in cls.resource_names]
 
     def _test_list_sorts(self, direction):
         sort_args = {
