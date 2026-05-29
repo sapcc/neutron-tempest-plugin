@@ -26,7 +26,7 @@ class PortsTestJSON(base.BaseNetworkTest):
 
     @classmethod
     def resource_setup(cls):
-        super(PortsTestJSON, cls).resource_setup()
+        super().resource_setup()
         cls.network = cls.create_network()
 
     def _confirm_dns_assignment(self, port):
@@ -158,7 +158,7 @@ class PortsIpv6TestJSON(base.BaseNetworkTest):
 
     @classmethod
     def resource_setup(cls):
-        super(PortsIpv6TestJSON, cls).resource_setup()
+        super().resource_setup()
         cls.network = cls.create_network()
 
     @decorators.idempotent_id('b85879fb-4852-4b99-aa32-3f8a7a6a3f01')
@@ -180,7 +180,7 @@ class PortsSearchCriteriaTest(base.BaseSearchCriteriaTest):
 
     @classmethod
     def resource_setup(cls):
-        super(PortsSearchCriteriaTest, cls).resource_setup()
+        super().resource_setup()
         net = cls.create_network(network_name='port-search-test-net')
         for name in cls.resource_names:
             cls.create_port(net, name=name)
@@ -233,7 +233,7 @@ class PortsTaggingOnCreationTestJSON(base.BaseNetworkTest):
 
     @classmethod
     def resource_setup(cls):
-        super(PortsTaggingOnCreationTestJSON, cls).resource_setup()
+        super().resource_setup()
         cls.network = cls.create_network()
 
     def _create_ports_in_bulk(self, ports):

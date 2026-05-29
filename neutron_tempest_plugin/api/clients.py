@@ -53,7 +53,7 @@ class Manager(clients.ServiceClients):
     def __init__(self, credentials=None, service=None):
         dscv = CONF.identity.disable_ssl_certificate_validation
         _, uri = tempest_clients.get_auth_provider_class(credentials)
-        super(Manager, self).__init__(
+        super().__init__(
             credentials=credentials,
             identity_uri=uri,
             scope='project',

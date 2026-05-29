@@ -24,7 +24,7 @@ class BaseFWaaSTest(fwaas_v2_client.FWaaSClientMixin, base.BaseNetworkTest):
 
     @classmethod
     def skip_checks(cls):
-        super(BaseFWaaSTest, cls).skip_checks()
+        super().skip_checks()
         msg = None
         if not CONF.fwaas.run_fwaas_tests:
             msg = ("Running of fwaas related tests is disabled in "

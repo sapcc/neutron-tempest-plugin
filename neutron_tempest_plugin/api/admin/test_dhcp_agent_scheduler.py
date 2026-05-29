@@ -26,7 +26,7 @@ class DHCPAgentSchedulersTestJSON(base.BaseAdminNetworkTest):
 
     @classmethod
     def resource_setup(cls):
-        super(DHCPAgentSchedulersTestJSON, cls).resource_setup()
+        super().resource_setup()
         # Create a network and make sure it will be hosted by a
         # dhcp agent: this is done by creating a regular port
         cls.network = cls.create_network()

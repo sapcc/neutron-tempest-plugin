@@ -33,7 +33,7 @@ class SfcScenarioTest(
 
     @classmethod
     def skip_checks(cls):
-        super(SfcScenarioTest, cls).skip_checks()
+        super().skip_checks()
         msg = None
         if not CONF.sfc.run_sfc_tests:
             msg = ("Running of SFC related tests is disabled in "

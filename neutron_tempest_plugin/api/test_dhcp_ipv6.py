@@ -28,12 +28,12 @@ class NetworksTestDHCPv6(base.BaseNetworkTest):
     _ip_version = 6
 
     def setUp(self):
-        super(NetworksTestDHCPv6, self).setUp()
+        super().setUp()
         self.addCleanup(self._clean_network)
 
     @classmethod
     def skip_checks(cls):
-        super(NetworksTestDHCPv6, cls).skip_checks()
+        super().skip_checks()
         msg = None
         if not CONF.network_feature_enabled.ipv6:
             msg = "IPv6 is not enabled"
@@ -44,7 +44,7 @@ class NetworksTestDHCPv6(base.BaseNetworkTest):
 
     @classmethod
     def resource_setup(cls):
-        super(NetworksTestDHCPv6, cls).resource_setup()
+        super().resource_setup()
         cls.network = cls.create_network()
 
     def _remove_from_list_by_index(self, things_list, elem):

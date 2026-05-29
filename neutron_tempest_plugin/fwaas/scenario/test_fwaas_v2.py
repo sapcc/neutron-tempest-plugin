@@ -42,7 +42,7 @@ class TestFWaaS_v2(base.FWaaSScenarioTest_V2):
 
     def setUp(self):
         LOG.debug("Initializing FWaaSScenarioTest Setup")
-        super(TestFWaaS_v2, self).setUp()
+        super().setUp()
         required_exts = ['fwaas_v2', 'security-group', 'router']
         # if self.router_insertion:
         #    required_exts.append('fwaasrouterinsertion')

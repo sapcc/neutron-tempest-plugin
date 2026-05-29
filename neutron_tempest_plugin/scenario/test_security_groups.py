@@ -70,17 +70,17 @@ class NetworkSecGroupTest(base.BaseTempestTestCase):
 
     @classmethod
     def setup_credentials(cls):
-        super(NetworkSecGroupTest, cls).setup_credentials()
+        super().setup_credentials()
         cls.network_client = cls.os_admin.network_client
 
     @classmethod
     def setup_clients(cls):
-        super(NetworkSecGroupTest, cls).setup_clients()
+        super().setup_clients()
         cls.project_id = cls.os_primary.credentials.tenant_id
 
     @classmethod
     def resource_setup(cls):
-        super(NetworkSecGroupTest, cls).resource_setup()
+        super().resource_setup()
         # setup basic topology for servers we can log into it
         cls.network = cls.create_network()
         cls.subnet = cls.create_subnet(cls.network)
@@ -89,7 +89,7 @@ class NetworkSecGroupTest(base.BaseTempestTestCase):
         cls.keypair = cls.create_keypair()
 
     def setUp(self):
-        super(NetworkSecGroupTest, self).setUp()
+        super().setUp()
         self.addCleanup(test_utils.call_and_ignore_notfound_exc,
                         self.network_client.reset_quotas, self.project_id)
         self.network_client.update_quotas(self.project_id, security_group=-1)

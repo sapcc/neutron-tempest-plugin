@@ -52,14 +52,14 @@ class BaseDNSIntegrationTests(base.BaseTempestTestCase, DNSMixin):
 
     @classmethod
     def setup_clients(cls):
-        super(BaseDNSIntegrationTests, cls).setup_clients()
+        super().setup_clients()
         cls.zone_client = cls.os_admin.dns_v2.ZonesClient()
         cls.recordset_client = cls.os_admin.dns_v2.RecordsetClient()
         cls.query_client.build_timeout = 300
 
     @classmethod
     def skip_checks(cls):
-        super(BaseDNSIntegrationTests, cls).skip_checks()
+        super().skip_checks()
         if not ('designate' in CONF.service_available and
                 CONF.service_available.designate):
             raise cls.skipException("Designate support is required")
@@ -69,7 +69,7 @@ class BaseDNSIntegrationTests(base.BaseTempestTestCase, DNSMixin):
     @classmethod
     @utils.requires_ext(extension="dns-integration", service="network")
     def resource_setup(cls):
-        super(BaseDNSIntegrationTests, cls).resource_setup()
+        super().resource_setup()
         cls.zone_name = dns_data_utils.rand_zone_name(
             name="basednsintegrationtests")
         cls.zone = cls.zone_client.create_zone(
@@ -214,7 +214,7 @@ class DNSIntegrationAdminTests(BaseDNSIntegrationTests,
 
     @classmethod
     def resource_setup(cls):
-        super(DNSIntegrationAdminTests, cls).resource_setup()
+        super().resource_setup()
         cls.network2 = cls.create_network(dns_domain=cls.zone['name'])
         cls.subnet2 = cls.create_subnet(cls.network2)
 
@@ -249,7 +249,7 @@ class DNSIntegrationExtraTests(BaseDNSIntegrationTests):
 
     @classmethod
     def resource_setup(cls):
-        super(DNSIntegrationExtraTests, cls).resource_setup()
+        super().resource_setup()
         cls.network2 = cls.create_network(
             name=data_utils.rand_name('dns_integration_net'))
         cls.subnet2 = cls.create_subnet(cls.network2, cidr='10.123.151.0/24')
@@ -296,7 +296,7 @@ class DNSIntegrationDomainPerProjectTests(BaseDNSIntegrationTests):
 
     @classmethod
     def resource_setup(cls):
-        super(BaseDNSIntegrationTests, cls).resource_setup()
+        super().resource_setup()
         cls.name = data_utils.rand_name('test-domain')
         cls.zone_name = "%s.%s.%s.zone." % (cls.client.user_id,
                                             cls.client.project_id,

@@ -201,11 +201,11 @@ class QoSTest(QoSTestMixin, base.BaseTempestTestCase):
     @tutils.requires_ext(extension="qos", service="network")
     @base_api.require_qos_rule_type(qos_consts.RULE_TYPE_BANDWIDTH_LIMIT)
     def resource_setup(cls):
-        super(QoSTest, cls).resource_setup()
+        super().resource_setup()
 
     @classmethod
     def setup_clients(cls):
-        super(QoSTest, cls).setup_clients()
+        super().setup_clients()
         cls.admin_client = cls.os_admin.network_client
         cls.qos_bw_limit_rule_client = \
             cls.os_admin.qos_limit_bandwidth_rules_client

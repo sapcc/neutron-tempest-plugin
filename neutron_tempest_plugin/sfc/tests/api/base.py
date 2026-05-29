@@ -35,7 +35,7 @@ class BaseFlowClassifierTest(
 
     @classmethod
     def skip_checks(cls):
-        super(BaseFlowClassifierTest, cls).skip_checks()
+        super().skip_checks()
         msg = None
         if not CONF.sfc.run_sfc_tests:
             msg = ("Running of SFC related tests is disabled in "
@@ -45,7 +45,7 @@ class BaseFlowClassifierTest(
 
     @classmethod
     def resource_setup(cls):
-        super(BaseFlowClassifierTest, cls).resource_setup()
+        super().resource_setup()
         if not utils.is_extension_enabled('flow_classifier', 'network'):
             msg = "FlowClassifier Extension not enabled."
             raise cls.skipException(msg)
@@ -58,7 +58,7 @@ class BaseFlowClassifierTest(
         if not utils.is_extension_enabled('flow_classifier', 'network'):
             msg = "FlowClassifier Extension not enabled."
             raise cls.skipException(msg)
-        super(BaseFlowClassifierTest, cls).resource_cleanup()
+        super().resource_cleanup()
 
     @classmethod
     def _create_port(cls, network, **kwargs):
@@ -108,7 +108,7 @@ class BaseSfcTest(
 ):
     @classmethod
     def resource_setup(cls):
-        super(BaseSfcTest, cls).resource_setup()
+        super().resource_setup()
         if not utils.is_extension_enabled('sfc', 'network'):
             msg = "Sfc Extension not enabled."
             raise cls.skipException(msg)
@@ -118,7 +118,7 @@ class BaseSfcTest(
         if not utils.is_extension_enabled('sfc', 'network'):
             msg = "Sfc Extension not enabled."
             raise cls.skipException(msg)
-        super(BaseSfcTest, cls).resource_cleanup()
+        super().resource_cleanup()
 
     def _try_create_port_pair(self, **kwargs):
         if 'ingress' not in kwargs or 'egress' not in 'kwargs':

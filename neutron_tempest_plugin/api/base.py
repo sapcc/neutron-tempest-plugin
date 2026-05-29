@@ -71,7 +71,7 @@ class BaseNetworkTest(test.BaseTestCase):
     @classmethod
     def get_client_manager(cls, credential_type=None, roles=None,
                            force_new=None):
-        manager = super(BaseNetworkTest, cls).get_client_manager(
+        manager = super().get_client_manager(
             credential_type=credential_type,
             roles=roles,
             force_new=force_new
@@ -84,7 +84,7 @@ class BaseNetworkTest(test.BaseTestCase):
 
     @classmethod
     def skip_checks(cls):
-        super(BaseNetworkTest, cls).skip_checks()
+        super().skip_checks()
         if not CONF.service_available.neutron:
             raise cls.skipException("Neutron support is required")
         if (cls._ip_version == const.IP_VERSION_6 and
@@ -99,16 +99,16 @@ class BaseNetworkTest(test.BaseTestCase):
     def setup_credentials(cls):
         # Create no network resources for these test.
         cls.set_network_resources()
-        super(BaseNetworkTest, cls).setup_credentials()
+        super().setup_credentials()
 
     @classmethod
     def setup_clients(cls):
-        super(BaseNetworkTest, cls).setup_clients()
+        super().setup_clients()
         cls.client = cls.os_primary.network_client
 
     @classmethod
     def resource_setup(cls):
-        super(BaseNetworkTest, cls).resource_setup()
+        super().resource_setup()
 
         cls.networks = []
         cls.admin_networks = []
@@ -295,7 +295,7 @@ class BaseNetworkTest(test.BaseTestCase):
                     cls.admin_client.delete_network_segment_range,
                     network_segment_range['id'])
 
-        super(BaseNetworkTest, cls).resource_cleanup()
+        super().resource_cleanup()
 
     @classmethod
     def _try_delete_resource(cls, delete_callable, *args, **kwargs):
@@ -1199,7 +1199,7 @@ class BaseAdminNetworkTest(BaseNetworkTest):
 
     @classmethod
     def setup_clients(cls):
-        super(BaseAdminNetworkTest, cls).setup_clients()
+        super().setup_clients()
         cls.admin_client = cls.os_admin.network_client
         cls.identity_admin_client = cls.os_admin.projects_client
 

@@ -76,7 +76,7 @@ class SubnetPoolPrefixOpsIpv4Test(test_subnetpools.SubnetPoolsTestBase,
 
     @classmethod
     def resource_setup(cls):
-        super(SubnetPoolPrefixOpsIpv4Test, cls).resource_setup()
+        super().resource_setup()
         cls._subnetpool_data = {'prefixes': cls.prefixes,
                                 'min_prefixlen': cls.min_prefixlen}
 
@@ -92,6 +92,6 @@ class SubnetPoolPrefixOpsIpv6Test(test_subnetpools.SubnetPoolsTestBase,
 
     @classmethod
     def resource_setup(cls):
-        super(SubnetPoolPrefixOpsIpv6Test, cls).resource_setup()
+        super().resource_setup()
         cls._subnetpool_data = {'prefixes': cls.prefixes,
                                 'min_prefixlen': cls.min_prefixlen}

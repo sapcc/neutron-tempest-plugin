@@ -36,7 +36,7 @@ class RoutersTest(base_routers.BaseRouterTest):
 
     @classmethod
     def resource_setup(cls):
-        super(RoutersTest, cls).resource_setup()
+        super().resource_setup()
         cls.tenant_cidr = (
             config.safe_get_config_value('network', 'project_network_cidr')
             if cls._ip_version == 4 else
@@ -417,7 +417,7 @@ class RoutersSearchCriteriaTest(base.BaseSearchCriteriaTest):
 
     @classmethod
     def resource_setup(cls):
-        super(RoutersSearchCriteriaTest, cls).resource_setup()
+        super().resource_setup()
         for name in cls.resource_names:
             cls.create_router(router_name=name)
 
@@ -467,7 +467,7 @@ class RoutersDeleteTest(base_routers.BaseRouterTest):
     """
     @classmethod
     def resource_setup(cls):
-        super(RoutersDeleteTest, cls).resource_setup()
+        super().resource_setup()
         cls.secgroup = cls.create_security_group(
             name=data_utils.rand_name("test_port_secgroup"))
         router_kwargs = {

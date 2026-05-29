@@ -40,7 +40,7 @@ class ExtraDHCPOptionsTestJSON(base.BaseNetworkTest):
 
     @classmethod
     def resource_setup(cls):
-        super(ExtraDHCPOptionsTestJSON, cls).resource_setup()
+        super().resource_setup()
         cls.network = cls.create_network()
         cls.subnet = cls.create_subnet(cls.network)
         cls.port = cls.create_port(cls.network)

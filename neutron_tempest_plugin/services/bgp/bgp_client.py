@@ -24,7 +24,7 @@ CONF = config.CONF
 
 class Manager(manager.Manager):
     def __init__(self, credentials=None, service=None):
-        super(Manager, self).__init__(credentials, service)
+        super().__init__(credentials, service)
         self.bgp_client = BgpSpeakerClientJSON(
             self.auth_provider,
             CONF.network.catalog_type,

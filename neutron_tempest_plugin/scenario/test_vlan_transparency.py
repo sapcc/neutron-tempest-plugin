@@ -38,7 +38,7 @@ class VlanTransparencyTest(base.BaseTempestTestCase):
 
     @classmethod
     def resource_setup(cls):
-        super(VlanTransparencyTest, cls).resource_setup()
+        super().resource_setup()
         # setup basic topology for servers we can log into
         cls.rand_name = data_utils.rand_name(
             cls.__name__.rsplit('.', 1)[-1])
@@ -63,7 +63,7 @@ class VlanTransparencyTest(base.BaseTempestTestCase):
 
     @classmethod
     def skip_checks(cls):
-        super(VlanTransparencyTest, cls).skip_checks()
+        super().skip_checks()
         if not (CONF.neutron_plugin_options.advanced_image_ref or
                 CONF.neutron_plugin_options.default_image_is_advanced):
             raise cls.skipException(
