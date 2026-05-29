@@ -52,12 +52,13 @@ class TestRevisions(base.BaseAdminNetworkTest):
         # safe
         for i in range(100):
             current = (self.client.show_network(net['id'])
-                       ['network']['revision_number'])
+            ['network']['revision_number'])
             try:
                 self.client.update_network(
                     net['id'], name='newnet',
                     headers={'If-Match': 'revision_number=%s' % current})
-            except exceptions.UnexpectedResponseCode:
+            except (exceptions.UnexpectedResponseCode,
+                    exceptions.PreconditionFailed):
                 continue
             break
         else:

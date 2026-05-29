@@ -190,7 +190,8 @@ class BaseNetworkTest(test.BaseTestCase):
             # Clean up routers
             for router in cls.routers:
                 cls._try_delete_resource(cls.delete_router,
-                                         router)
+                                         router,
+                                         client=cls.admin_client)
             # Clean up metering label rules
             for metering_label_rule in cls.metering_label_rules:
                 cls._try_delete_resource(
@@ -217,7 +218,7 @@ class BaseNetworkTest(test.BaseTestCase):
                                          port['id'])
             # Clean up subnets
             for subnet in cls.subnets:
-                cls._try_delete_resource(cls.client.delete_subnet,
+                cls._try_delete_resource(cls.admin_client.delete_subnet,
                                          subnet['id'])
             # Clean up admin subnets
             for subnet in cls.admin_subnets:
@@ -225,7 +226,10 @@ class BaseNetworkTest(test.BaseTestCase):
                                          subnet['id'])
             # Clean up networks
             for network in cls.networks:
-                cls._try_delete_resource(cls.delete_network, network)
+                cls._try_delete_resource(
+                    cls.delete_network,
+                    network, client=cls.admin_client
+                )
 
             # Clean up admin networks
             for network in cls.admin_networks:
@@ -235,7 +239,8 @@ class BaseNetworkTest(test.BaseTestCase):
             # Clean up security groups
             for security_group in cls.security_groups:
                 cls._try_delete_resource(cls.delete_security_group,
-                                         security_group)
+                                         security_group,
+                                         client=cls.admin_client)
 
             # Clean up admin security groups
             for security_group in cls.admin_security_groups:

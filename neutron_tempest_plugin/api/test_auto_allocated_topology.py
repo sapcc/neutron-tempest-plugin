@@ -83,39 +83,48 @@ class TestAutoAllocatedTopology(base.BaseAdminNetworkTest):
 
     @decorators.idempotent_id('64bc0b02-cee4-11e5-9f3c-080027605a2b')
     def test_get_allocated_net_topology_as_tenant(self):
-        self.client.delete_auto_allocated_topology()
+        self.admin_client.delete_auto_allocated_topology(
+            self.client.tenant_id)
         resources_before = self._count_topology_resources()
         self.assertEqual((0, 0, 0), resources_before)
 
-        body = self.client.get_auto_allocated_topology()
+        body = self.admin_client.get_auto_allocated_topology(
+            self.client.tenant_id)
         topology = body[auto_allocated_topology.RESOURCE_NAME]
         self.assertIsNotNone(topology)
-        self._add_topology_cleanup(self.client)
+
+        self.addCleanup(
+            self.admin_client.delete_auto_allocated_topology,
+            self.client.tenant_id)
 
         network_id1 = topology['id']
         self.assertIsNotNone(network_id1)
         network = self.client.show_network(topology['id'])['network']
         self.assertTrue(network['admin_state_up'])
         resources_after1 = self._count_topology_resources()
-        # One network, two subnets (v4 and v6) and one router
         self.assertEqual((1, self.num_subnetpools, 1), resources_after1)
 
-        body = self.client.get_auto_allocated_topology()
+        body = self.admin_client.get_auto_allocated_topology(
+            self.client.tenant_id)
         topology = body[auto_allocated_topology.RESOURCE_NAME]
         network_id2 = topology['id']
         resources_after2 = self._count_topology_resources()
-        # After the initial GET, the API should be idempotent
         self.assertEqual(network_id1, network_id2)
         self.assertEqual(resources_after1, resources_after2)
 
     @decorators.idempotent_id('aabc0b02-cee4-11e5-9f3c-091127605a2b')
     def test_delete_allocated_net_topology_as_tenant(self):
-        self.client.delete_auto_allocated_topology()
+        self.admin_client.delete_auto_allocated_topology(
+            self.client.tenant_id)
         resources_before = self._count_topology_resources()
         self.assertEqual((0, 0, 0), resources_before)
-        body = self.client.get_auto_allocated_topology()
+
+        body = self.admin_client.get_auto_allocated_topology(
+            self.client.tenant_id)
         topology = body[auto_allocated_topology.RESOURCE_NAME]
         self.assertIsNotNone(topology)
-        self.client.delete_auto_allocated_topology()
+
+        self.admin_client.delete_auto_allocated_topology(
+            self.client.tenant_id)
         resources_after = self._count_topology_resources()
         self.assertEqual((0, 0, 0), resources_after)
