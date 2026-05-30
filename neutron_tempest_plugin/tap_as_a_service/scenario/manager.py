@@ -37,7 +37,7 @@ class BaseTaasScenarioTests(base.BaseTempestTestCase):
 
     @classmethod
     def setup_clients(cls):
-        super(BaseTaasScenarioTests, cls).setup_clients()
+        super().setup_clients()
 
         cls.client = cls.os_primary.network_client
         cls.admin_network_client = cls.os_admin.network_client

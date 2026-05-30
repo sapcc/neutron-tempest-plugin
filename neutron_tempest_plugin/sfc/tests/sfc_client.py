@@ -24,7 +24,7 @@ class SfcClientMixin(object):
 
     @classmethod
     def resource_setup(cls):
-        super(SfcClientMixin, cls).resource_setup()
+        super().resource_setup()
         manager = cls.os_admin
         cls.portchain_client = (
             sfc_client.PortChainClient(

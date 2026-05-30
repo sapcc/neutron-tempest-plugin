@@ -138,7 +138,7 @@ class BaseMulticastTest(object):
 
     @classmethod
     def skip_checks(cls):
-        super(BaseMulticastTest, cls).skip_checks()
+        super().skip_checks()
         advanced_image_available = (
             CONF.neutron_plugin_options.advanced_image_ref or
             CONF.neutron_plugin_options.default_image_is_advanced)
@@ -148,7 +148,7 @@ class BaseMulticastTest(object):
 
     @classmethod
     def resource_setup(cls):
-        super(BaseMulticastTest, cls).resource_setup()
+        super().resource_setup()
 
         if CONF.neutron_plugin_options.default_image_is_advanced:
             cls.flavor_ref = CONF.compute.flavor_ref

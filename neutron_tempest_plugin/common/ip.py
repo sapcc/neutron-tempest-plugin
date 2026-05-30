@@ -253,7 +253,7 @@ class HasProperties(object):
         except KeyError:
             pass
         # This should raise AttributeError
-        return getattr(super(HasProperties, self), name)
+        return getattr(super(), name)
 
 
 class Address(HasProperties,

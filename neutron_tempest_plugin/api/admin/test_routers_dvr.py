@@ -31,7 +31,7 @@ class RoutersTestDVRBase(base.BaseRouterTest):
         # admin credentials to create router with distributed=True attribute
         # and checking for BadRequest exception and that the resulting router
         # has a distributed attribute.
-        super(RoutersTestDVRBase, cls).resource_setup()
+        super().resource_setup()
         name = data_utils.rand_name('pretest-check')
         router = cls.admin_client.create_router(name)
         if 'distributed' not in router['router']:

@@ -35,6 +35,10 @@ DEFAULT_IP6_RESERVED = 2
 
 DELETE_TIMEOUT = 300
 DELETE_SLEEP = 5
+# Timeout for DHCP agents to create their ports after subnet creation.
+# CCloud runs multiple DHCP agents per AZ, so settlement takes longer.
+DHCP_SETTLE_TIMEOUT = 120
+DHCP_SETTLE_SLEEP = 5
 
 
 class NetworksIpAvailabilityTest(base.BaseAdminNetworkTest):
@@ -52,7 +56,7 @@ class NetworksIpAvailabilityTest(base.BaseAdminNetworkTest):
     @classmethod
     @utils.requires_ext(extension="network-ip-availability", service="network")
     def skip_checks(cls):
-        super(NetworksIpAvailabilityTest, cls).skip_checks()
+        super().skip_checks()
 
     @staticmethod
     def _get_availability(network, net_availability):
@@ -65,7 +69,33 @@ class NetworksIpAvailabilityTest(base.BaseAdminNetworkTest):
         else:
             return net_availability['network_ip_availability']
 
-    def _get_used_ips(self, network, net_availability):
+    def _wait_for_stable_ip_count(self, network):
+        """Wait until used_ips stops changing (DHCP agents finished settling).
+
+        In CCloud multiple DHCP agents create their ports asynchronously after
+        subnet creation. We poll until the count is stable for two consecutive
+        checks before returning it as the baseline.
+        """
+        prev = None
+        stable_count = 0
+        deadline = DHCP_SETTLE_TIMEOUT / DHCP_SETTLE_SLEEP
+
+        for _ in range(int(deadline)):
+            current = self._get_used_ips(network)
+            if current == prev:
+                stable_count += 1
+                if stable_count >= 2:
+                    return current
+            else:
+                stable_count = 0
+            prev = current
+            time.sleep(DHCP_SETTLE_SLEEP)
+        # Return whatever we have after timeout
+        return self._get_used_ips(network)
+
+    def _get_used_ips(self, network, net_availability=None):
+        net_availability = self.admin_client.show_network_ip_availability(
+            network['id'])
         availability = self._get_availability(network, net_availability)
         return availability and availability['used_ips']
 
@@ -90,7 +120,7 @@ def calc_total_ips(prefix, ip_version):
 class NetworksIpAvailabilityIPv4Test(NetworksIpAvailabilityTest):
 
     def setUp(self):
-        super(NetworksIpAvailabilityIPv4Test, self).setUp()
+        super().setUp()
         net_name = data_utils.rand_name('network')
         self.network = self.create_network(network_name=net_name)
 
@@ -104,7 +134,8 @@ class NetworksIpAvailabilityIPv4Test(NetworksIpAvailabilityTest):
     def test_list_ip_availability_after_subnet_and_ports(self):
         subnet = self.create_subnet(self.network, enable_dhcp=False)
         prefix = netaddr.IPNetwork(subnet['cidr']).prefixlen
-        body = self.admin_client.list_network_ip_availabilities()
+        body = self.admin_client.list_network_ip_availabilities(
+            network_id=self.network['id'])
         used_ips_before_port_create = self._get_used_ips(self.network, body)
         self.create_port(self.network)
         net_availability = self.admin_client.list_network_ip_availabilities()
@@ -117,14 +148,13 @@ class NetworksIpAvailabilityIPv4Test(NetworksIpAvailabilityTest):
     def test_list_ip_availability_after_subnet_and_ports_with_enable_dhcp_true(self):
         subnet = self.create_subnet(self.network, enable_dhcp=True)
         prefix = netaddr.IPNetwork(subnet['cidr']).prefixlen
-        body = self.admin_client.list_network_ip_availabilities()
-        used_ips_before_port_create = self._get_used_ips(self.network, body)
+        used_ips_before_port_create = self._wait_for_stable_ip_count(
+            self.network)
         self.create_port(self.network)
-        # wait some time
-        time.sleep(30)
-        net_availability = self.admin_client.list_network_ip_availabilities()
+        net_availability = self.admin_client.list_network_ip_availabilities(
+            network_id=self.network['id'])
         self._assert_total_and_used_ips(
-            used_ips_before_port_create + 3,
+            used_ips_before_port_create + 1,
             calc_total_ips(prefix, self._ip_version),
             self.network, net_availability)
 
@@ -151,17 +181,11 @@ class NetworksIpAvailabilityIPv4Test(NetworksIpAvailabilityTest):
     def test_list_ip_availability_after_port_delete_with_enable_dhcp_true(self):
         self.create_subnet(self.network, enable_dhcp=True)
         port = self.create_port(self.network)
-        net_availability = self.admin_client.list_network_ip_availabilities(
-            network_id=self.network['id'])
-        used_ips_before = self._get_used_ips(self.network, net_availability)
+        used_ips_before = self._wait_for_stable_ip_count(self.network)
         self.client.delete_port(port['id'])
 
         def is_count_ip_availability_valid():
-            availabilities = self.admin_client.list_network_ip_availabilities(
-                network_id=self.network['id'])
-            used_ips_after = self._get_used_ips(self.network, availabilities)
-            # DHCP port remains after user port deletion,
-            # so used_ips decreases by exactly 1
+            used_ips_after = self._get_used_ips(self.network)
             return used_ips_before - 1 == used_ips_after
 
         self.assertTrue(
@@ -196,17 +220,15 @@ class NetworksIpAvailabilityIPv4Test(NetworksIpAvailabilityTest):
         self._assert_total_and_used_ips(0, 0, self.network, net_availability)
         subnet = self.create_subnet(self.network, enable_dhcp=True)
         prefix = netaddr.IPNetwork(subnet['cidr']).prefixlen
-        net_availability = self.admin_client.show_network_ip_availability(
-            self.network['id'])
-        used_ips_before_port_create = self._get_used_ips(self.network,
-                                                         net_availability)
+        # Wait for DHCP agents to settle before measuring baseline so that
+        # agent activity is not counted as part of the user port delta.
+        used_ips_before_port_create = self._wait_for_stable_ip_count(
+            self.network)
         self.create_port(self.network)
-        # wait some time
-        time.sleep(30)
         net_availability = self.admin_client.show_network_ip_availability(
             self.network['id'])
         self._assert_total_and_used_ips(
-            used_ips_before_port_create + 3,
+            used_ips_before_port_create + 1,
             calc_total_ips(prefix, self._ip_version),
             self.network,
             net_availability)
@@ -259,7 +281,7 @@ class NetworksIpAvailabilityIPv6Test(NetworksIpAvailabilityIPv4Test):
     _ip_version = lib_constants.IP_VERSION_6
 
     def setUp(self):
-        super(NetworksIpAvailabilityIPv6Test, self).setUp()
+        super().setUp()
         net_name = data_utils.rand_name('network')
         self.network = self.create_network(network_name=net_name)
 
@@ -268,7 +290,8 @@ class NetworksIpAvailabilityIPv6Test(NetworksIpAvailabilityIPv4Test):
         subnet = self.create_subnet(self.network, ip_version=self._ip_version,
                                     enable_dhcp=False)
         prefix = netaddr.IPNetwork(subnet['cidr']).prefixlen
-        body = self.admin_client.list_network_ip_availabilities()
+        body = self.admin_client.list_network_ip_availabilities(
+            network_id=self.network['id'])
         used_ips_before_port_create = self._get_used_ips(self.network, body)
         self.create_port(self.network)
         net_availability = self.admin_client.list_network_ip_availabilities()

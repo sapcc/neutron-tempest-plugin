@@ -13,6 +13,7 @@
 import time
 from urllib import parse as urlparse
 
+from neutron_lib._i18n import _
 from oslo_serialization import jsonutils
 from tempest.lib.common import rest_client as service_client
 from tempest.lib import exceptions as lib_exc
@@ -273,9 +274,13 @@ class NetworkClientJSON(service_client.RestClient):
         self.expected_success(201, resp.status)
         return service_client.ResponseBody(resp, body)
 
-    def create_bulk_security_groups(self, security_group_list):
+    def create_bulk_security_groups(self, security_group_list,
+                                    stateless=False):
         group_list = [{'security_group': {'name': name}}
                       for name in security_group_list]
+        if stateless:
+            for group in group_list:
+                group['security_group']['stateful'] = False
         post_data = {'security_groups': group_list}
         body = self.serialize_list(post_data, 'security_groups',
                                    'security_group')
@@ -300,7 +305,7 @@ class NetworkClientJSON(service_client.RestClient):
         try:
             getattr(self, method)(id)
         except AttributeError:
-            raise Exception("Unknown resource type %s " % resource_type)
+            raise Exception(_("Unknown resource type %s " % resource_type))
         except lib_exc.NotFound:
             return True
         return False
@@ -337,17 +342,17 @@ class NetworkClientJSON(service_client.RestClient):
     def serialize_list(self, data, root=None, item=None):
         return self.serialize(data)
 
-    def update_quotas(self, tenant_id, **kwargs):
+    def update_quotas(self, project_id, **kwargs):
         put_body = {'quota': kwargs}
         body = jsonutils.dumps(put_body)
-        uri = '%s/quotas/%s' % (self.uri_prefix, tenant_id)
+        uri = '%s/quotas/%s' % (self.uri_prefix, project_id)
         resp, body = self.put(uri, body)
         self.expected_success(200, resp.status)
         body = jsonutils.loads(body)
         return service_client.ResponseBody(resp, body['quota'])
 
-    def reset_quotas(self, tenant_id):
-        uri = '%s/quotas/%s' % (self.uri_prefix, tenant_id)
+    def reset_quotas(self, project_id):
+        uri = '%s/quotas/%s' % (self.uri_prefix, project_id)
         resp, body = self.delete(uri)
         self.expected_success(204, resp.status)
         return service_client.ResponseBody(resp, body)
@@ -377,7 +382,7 @@ class NetworkClientJSON(service_client.RestClient):
         cur_gw_info = body['router']['external_gateway_info']
         if cur_gw_info:
             # TODO(kevinbenton): setting the external gateway info is not
-            # allowed for a regular tenant. If the ability to update is also
+            # allowed for a regular project. If the ability to update is also
             # merged, a test case for this will need to be added similar to
             # the SNAT case.
             cur_gw_info.pop('external_fixed_ips', None)
@@ -393,6 +398,9 @@ class NetworkClientJSON(service_client.RestClient):
             update_body['routes'] = kwargs['routes']
         if 'enable_ndp_proxy' in kwargs:
             update_body['enable_ndp_proxy'] = kwargs['enable_ndp_proxy']
+        for attr in ('enable_default_route_bfd', 'enable_default_route_ecmp'):
+            if attr in kwargs:
+                update_body[attr] = kwargs[attr]
         update_body = dict(router=update_body)
         update_body = jsonutils.dumps(update_body)
         resp, body = self.put(uri, update_body)
@@ -466,6 +474,42 @@ class NetworkClientJSON(service_client.RestClient):
 
     def remove_router_extra_routes(self, router_id):
         self.update_router(router_id, routes=None)
+
+    def router_add_external_gateways(self, router_id, external_gateways):
+        uri = '%s/routers/%s/add_external_gateways' % (self.uri_prefix,
+                                                       router_id)
+        update_body = {
+                'router': {'external_gateways': external_gateways},
+        }
+        update_body = jsonutils.dumps(update_body)
+        resp, body = self.put(uri, update_body)
+        self.expected_success(200, resp.status)
+        body = jsonutils.loads(body)
+        return service_client.ResponseBody(resp, body)
+
+    def router_remove_external_gateways(self, router_id, external_gateways):
+        uri = '%s/routers/%s/remove_external_gateways' % (self.uri_prefix,
+                                                          router_id)
+        update_body = {
+                'router': {'external_gateways': external_gateways},
+        }
+        update_body = jsonutils.dumps(update_body)
+        resp, body = self.put(uri, update_body)
+        self.expected_success(200, resp.status)
+        body = jsonutils.loads(body)
+        return service_client.ResponseBody(resp, body)
+
+    def router_update_external_gateways(self, router_id, external_gateways):
+        uri = '%s/routers/%s/update_external_gateways' % (self.uri_prefix,
+                                                          router_id)
+        update_body = {
+                'router': {'external_gateways': external_gateways},
+        }
+        update_body = jsonutils.dumps(update_body)
+        resp, body = self.put(uri, update_body)
+        self.expected_success(200, resp.status)
+        body = jsonutils.loads(body)
+        return service_client.ResponseBody(resp, body)
 
     def update_agent(self, agent_id, agent_info):
         """Update an agent
@@ -690,15 +734,15 @@ class NetworkClientJSON(service_client.RestClient):
         return service_client.ResponseBody(resp, body)
 
     def create_trunk(self, parent_port_id=None, subports=None,
-                     tenant_id=None, name=None, admin_state_up=None,
+                     project_id=None, name=None, admin_state_up=None,
                      description=None, **kwargs):
         uri = '%s/trunks' % self.uri_prefix
         if parent_port_id:
             kwargs['port_id'] = parent_port_id
         if subports is not None:
             kwargs['sub_ports'] = subports
-        if tenant_id is not None:
-            kwargs['tenant_id'] = tenant_id
+        if project_id is not None:
+            kwargs['project_id'] = project_id
         if name is not None:
             kwargs['name'] = name
         if description is not None:
@@ -761,15 +805,23 @@ class NetworkClientJSON(service_client.RestClient):
         body = jsonutils.loads(body)
         return service_client.ResponseBody(resp, body)
 
-    def get_auto_allocated_topology(self, tenant_id=None):
-        uri = '%s/auto-allocated-topology/%s' % (self.uri_prefix, tenant_id)
+    def validate_auto_allocated_topology_requirements(self, project_id=None):
+        uri = '%s/auto-allocated-topology/%s?fields=dry-run' % (
+            self.uri_prefix, project_id)
         resp, body = self.get(uri)
         self.expected_success(200, resp.status)
         body = jsonutils.loads(body)
         return service_client.ResponseBody(resp, body)
 
-    def delete_auto_allocated_topology(self, tenant_id=None):
-        uri = '%s/auto-allocated-topology/%s' % (self.uri_prefix, tenant_id)
+    def get_auto_allocated_topology(self, project_id=None):
+        uri = '%s/auto-allocated-topology/%s' % (self.uri_prefix, project_id)
+        resp, body = self.get(uri)
+        self.expected_success(200, resp.status)
+        body = jsonutils.loads(body)
+        return service_client.ResponseBody(resp, body)
+
+    def delete_auto_allocated_topology(self, project_id=None):
+        uri = '%s/auto-allocated-topology/%s' % (self.uri_prefix, project_id)
         resp, body = self.delete(uri)
         self.expected_success(204, resp.status)
         return service_client.ResponseBody(resp, body)
@@ -838,6 +890,38 @@ class NetworkClientJSON(service_client.RestClient):
     def delete_security_group(self, security_group_id):
         uri = '%s/security-groups/%s' % (
             self.uri_prefix, security_group_id)
+        resp, body = self.delete(uri)
+        self.expected_success(204, resp.status)
+        return service_client.ResponseBody(resp, body)
+
+    def list_default_security_group_rules(self, **kwargs):
+        uri = '%s/default-security-group-rules' % self.uri_prefix
+        if kwargs:
+            uri += '?' + urlparse.urlencode(kwargs, doseq=1)
+        resp, body = self.get(uri)
+        self.expected_success(200, resp.status)
+        body = jsonutils.loads(body)
+        return service_client.ResponseBody(resp, body)
+
+    def get_default_security_group_rule(self, rule_id):
+        uri = '%s/default-security-group-rules/%s' % (self.uri_prefix,
+                                                      rule_id)
+        get_resp, get_resp_body = self.get(uri)
+        self.expected_success(200, get_resp.status)
+        body = jsonutils.loads(get_resp_body)
+        return service_client.ResponseBody(get_resp, body)
+
+    def create_default_security_group_rule(self, **kwargs):
+        post_body = {'default_security_group_rule': kwargs}
+        body = jsonutils.dumps(post_body)
+        uri = '%s/default-security-group-rules' % self.uri_prefix
+        resp, body = self.post(uri, body)
+        self.expected_success(201, resp.status)
+        body = jsonutils.loads(body)
+        return service_client.ResponseBody(resp, body)
+
+    def delete_default_security_group_rule(self, rule_id):
+        uri = '%s/default-security-group-rules/%s' % (self.uri_prefix, rule_id)
         resp, body = self.delete(uri)
         self.expected_success(204, resp.status)
         return service_client.ResponseBody(resp, body)
@@ -1074,6 +1158,14 @@ class NetworkClientJSON(service_client.RestClient):
         resp, body = self.get(uri)
         body = {'extensions': self.deserialize_list(body)}
         self.expected_success(200, resp.status)
+        return service_client.ResponseBody(resp, body)
+
+    def get_extension(self, alias):
+        uri = '%s/%s' % (
+            self.get_uri('extensions'), alias)
+        resp, body = self.get(uri)
+        self.expected_success(200, resp.status)
+        body = jsonutils.loads(body)
         return service_client.ResponseBody(resp, body)
 
     def get_tags(self, resource_type, resource_id):

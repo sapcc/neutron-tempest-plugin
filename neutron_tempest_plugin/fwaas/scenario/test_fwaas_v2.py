@@ -14,8 +14,6 @@
 #    under the License.
 
 
-import testscenarios
-
 from oslo_log import log as logging
 from tempest.common import utils
 from tempest import config
@@ -28,7 +26,6 @@ from neutron_tempest_plugin.fwaas.scenario import fwaas_v2_base as base
 
 CONF = config.CONF
 LOG = logging.getLogger(__name__)
-load_tests = testscenarios.load_tests_apply_scenarios
 
 
 class TestFWaaS_v2(base.FWaaSScenarioTest_V2):
@@ -40,9 +37,15 @@ class TestFWaaS_v2(base.FWaaSScenarioTest_V2):
     - public_network_id
     """
 
+    @classmethod
+    def setup_credentials(cls):
+        # Create no default network resources; tests create their own topology.
+        cls.set_network_resources()
+        super().setup_credentials()
+
     def setUp(self):
         LOG.debug("Initializing FWaaSScenarioTest Setup")
-        super(TestFWaaS_v2, self).setUp()
+        super().setUp()
         required_exts = ['fwaas_v2', 'security-group', 'router']
         # if self.router_insertion:
         #    required_exts.append('fwaasrouterinsertion')
@@ -92,9 +95,9 @@ class TestFWaaS_v2(base.FWaaSScenarioTest_V2):
                                 (ssh_source, remote_ip, should_connect),
                                 msg)
             except Exception:
-                LOG.exception("Unable to access {dest} via ssh to "
-                              "floating-ip {src}".format(dest=remote_ip,
-                                                         src=floating_ip))
+                LOG.exception("Unable to access %s via ssh to "
+                              "floating-ip %s",
+                              remote_ip, floating_ip)
                 raise
 
     def _check_remote_connectivity(self, source, dest, should_succeed=True,
@@ -129,10 +132,15 @@ class TestFWaaS_v2(base.FWaaSScenarioTest_V2):
                         subnet_id=subnet_id)
         return resp
 
-    def _create_network_subnet(self):
-        network = self.create_network()
-        subnet_kwargs = dict(network=network)
-        subnet = self.create_subnet(**subnet_kwargs)
+    def _create_network_subnet(self, prefix="smoke-",
+                              port_security_enabled=True):
+        network_prefix = "network-%s" % prefix
+        subnet_prefix = "subnet-%s" % prefix
+        network = self.create_network(
+            namestart=network_prefix,
+            port_security_enabled=port_security_enabled)
+        subnet = self.create_subnet(
+            network=network, namestart=subnet_prefix)
         return network, subnet
 
     def _create_test_server(self, network, security_group):
@@ -272,12 +280,11 @@ class TestFWaaS_v2(base.FWaaSScenarioTest_V2):
 
         # Scenario 3: Create a rule allowing ICMP only from server_fixed_ip_1
         # to server_fixed_ip_2 and check that traffic from opposite direction
-        # is blocked.
+        # is blocked (for ovs driver where rules are stateful).
         fw_allow_unidirectional_icmp_rule = self.create_firewall_rule(
             action="allow", protocol="icmp",
             source_ip_address=topology['server_fixed_ip_1'],
             destination_ip_address=topology['server_fixed_ip_2'])
-
         self.remove_firewall_rule_from_policy_and_wait(
             firewall_group_id=fw_group['id'],
             firewall_rule_id=fw_deny_icmp_rule['id'],
@@ -286,6 +293,20 @@ class TestFWaaS_v2(base.FWaaSScenarioTest_V2):
             firewall_group_id=fw_group['id'],
             firewall_rule_id=fw_allow_unidirectional_icmp_rule['id'],
             firewall_policy_id=fw_policy['id'])
+
+        if CONF.fwaas.driver == 'ovn':
+            # NOTE(slaweq): OVN driver in FWaaS implements only stateless rules
+            # so allowing only unidirectional traffic is not enough as ICMP
+            # replies are still blocked and to make it working additional rule
+            # for the opposite direction is required also:
+            fw_allow_icmp_reply_rule = self.create_firewall_rule(
+                action="allow", protocol="icmp",
+                source_ip_address=topology['server_fixed_ip_2'],
+                destination_ip_address=topology['server_fixed_ip_1'])
+            self.insert_firewall_rule_in_policy_and_wait(
+                firewall_group_id=fw_group['id'],
+                firewall_rule_id=fw_allow_icmp_reply_rule['id'],
+                firewall_policy_id=fw_policy['id'])
 
         self._check_server_connectivity(
             topology['server_floating_ip_1'],
@@ -296,7 +317,112 @@ class TestFWaaS_v2(base.FWaaSScenarioTest_V2):
             topology['server_floating_ip_2'],
             topology['private_key2'],
             address_list=[topology['server_fixed_ip_1']],
-            should_connect=False)
+            should_connect=CONF.fwaas.driver == 'ovn')
 
         # Disassociate ports of this firewall group for cleanup resources
         self.update_firewall_group_and_wait(fw_group['id'], ports=[])
+
+    def _create_fip_topology(self):
+        """Create topology: network, subnet, router, VM with FIP.
+
+        VM is created without security group (network has
+        port_security_enabled=False).
+
+        +--------+             +-------------+
+        |"server"|             | "subnet"    |
+        |   VM   +-------------+ "network"   |
+        +--------+             +----+--------+
+                                    |
+                                    | router interface port
+                               +----+-----+
+                               | "router"|
+                               +----+-----+
+                                    |
+                                    | external gateway
+                                    |
+                               [external network]
+        """
+        # No security group: network has port_security_enabled=False
+        network, subnet = self._create_network_subnet(
+            prefix='fwaas-ssh-fip-',
+            port_security_enabled=False)
+        router = self._create_router(namestart='fwaas-ssh-fip-router')
+        pub_network_id = CONF.network.public_network_id
+        router = self.routers_client.update_router(
+            router['id'],
+            external_gateway_info=dict(network_id=pub_network_id))['router']
+        resp = self._add_router_interface(
+            router['id'], subnet_id=subnet['id'])
+        router_port_id = resp['port_id']
+        server, keys = self._create_server(network)
+        floating_ip = self.create_floating_ip(server, pub_network_id)
+
+        return {
+            'server': server,
+            'private_key': keys['private_key'],
+            'floating_ip': floating_ip,
+            'router_port_id': router_port_id,
+        }
+
+    @decorators.idempotent_id('a8c2e1f4-9b3d-4f5a-8e6c-7d9f2b1a0c3e')
+    def test_ssh_via_fip_with_fwaas_rules(self):
+        """Test SSH access to VM with FIP controlled by FWaaS rules.
+
+        Verifies that:
+        1. FWaaS is enabled (skipped in setUp if not)
+        2. Baseline: VM reachable before firewall (SSH works)
+        3. Firewall group with empty policy denies all traffic (SSH blocked)
+        4. Adding allow SSH rules to ingress and egress policy permits SSH
+        """
+        topology = self._create_fip_topology()
+        fip_address = topology['floating_ip']['floating_ip_address']
+        ssh_login = CONF.validation.image_ssh_user
+        private_key = topology['private_key']
+
+        # Baseline: Ensure VM is reachable before applying firewall
+        self.check_vm_connectivity(
+            ip_address=fip_address,
+            username=ssh_login,
+            private_key=private_key)
+
+        # Phase 1: Attach firewall group with empty policy - SSH blocked
+        fw_policy = self.create_firewall_policy()
+        fw_group = self.create_firewall_group(
+            ports=[topology['router_port_id']],
+            ingress_firewall_policy_id=fw_policy['id'],
+            egress_firewall_policy_id=fw_policy['id'])
+        self.addCleanup(self.update_firewall_group_and_wait, fw_group['id'],
+                        ports=[])
+        self._wait_firewall_group_ready(fw_group['id'])
+        LOG.debug('Firewall group with empty policy attached to router port')
+
+        self.check_connectivity(
+            ip_address=fip_address,
+            username=ssh_login,
+            private_key=private_key,
+            should_connect=False,
+            check_icmp=False,
+            check_ssh=True)
+
+        # Phase 2: Add allow SSH rules - ingress dport 22, egress sport 22
+        fw_allow_ssh_rule = self.create_firewall_rule(
+            action="allow", protocol="tcp", destination_port=22)
+        fw_allow_egress_ssh_rule = self.create_firewall_rule(
+            action="allow", protocol="tcp", source_port=22)
+        self.insert_firewall_rule_in_policy_and_wait(
+            firewall_group_id=fw_group['id'],
+            firewall_rule_id=fw_allow_ssh_rule['id'],
+            firewall_policy_id=fw_policy['id'])
+        self.insert_firewall_rule_in_policy_and_wait(
+            firewall_group_id=fw_group['id'],
+            firewall_rule_id=fw_allow_egress_ssh_rule['id'],
+            firewall_policy_id=fw_policy['id'])
+        LOG.debug('Added allow SSH rules to ingress and egress policy')
+
+        self.check_connectivity(
+            ip_address=fip_address,
+            username=ssh_login,
+            private_key=private_key,
+            should_connect=True,
+            check_icmp=False,
+            check_ssh=True)

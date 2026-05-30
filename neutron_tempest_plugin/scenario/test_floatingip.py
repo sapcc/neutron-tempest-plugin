@@ -15,17 +15,15 @@
 
 import time
 
+import ddt
 from neutron_lib import constants as lib_constants
 from neutron_lib.services.qos import constants as qos_consts
-from neutron_lib.utils import test
 from oslo_log import log
 from tempest.common import utils
 from tempest.common import waiters
 from tempest.lib.common.utils import data_utils
 from tempest.lib import decorators
 from tempest.lib import exceptions
-import testscenarios
-from testscenarios.scenarios import multiply_scenarios
 import testtools
 
 from neutron_tempest_plugin.api import base as base_api
@@ -41,16 +39,13 @@ CONF = config.CONF
 LOG = log.getLogger(__name__)
 
 
-load_tests = testscenarios.load_tests_apply_scenarios
-
-
-class FloatingIpTestCasesMixin(object):
+class FloatingIpTestCasesMixin:
     credentials = ['primary', 'admin']
 
     @classmethod
     @utils.requires_ext(extension="router", service="network")
     def resource_setup(cls):
-        super(FloatingIpTestCasesMixin, cls).resource_setup()
+        super().resource_setup()
         cls.network = cls.create_network()
         cls.subnet = cls.create_subnet(cls.network)
         cls.router = cls.create_router_by_client()
@@ -104,10 +99,10 @@ class FloatingIpTestCasesMixin(object):
                                        constants.SERVER_STATUS_ACTIVE)
         return {'port': port, 'fip': fip, 'server': server}
 
-    def _test_east_west(self):
+    def _test_east_west(self, src_has_fip, dest_has_fip):
         # The proxy VM is used to control the source VM when it doesn't
         # have a floating-ip.
-        if self.src_has_fip:
+        if src_has_fip:
             proxy = None
             proxy_client = None
         else:
@@ -117,7 +112,7 @@ class FloatingIpTestCasesMixin(object):
                                       pkey=self.keypair['private_key'])
 
         # Source VM
-        if self.src_has_fip:
+        if src_has_fip:
             src_server = self._create_server()
             src_server_ip = src_server['fip']['floating_ip_address']
         else:
@@ -129,7 +124,7 @@ class FloatingIpTestCasesMixin(object):
                                 proxy_client=proxy_client)
 
         # Destination VM
-        if self.dest_has_fip:
+        if dest_has_fip:
             dest_server = self._create_server(network=self._dest_network)
         else:
             dest_server = self._create_server(create_floating_ip=False,
@@ -139,46 +134,44 @@ class FloatingIpTestCasesMixin(object):
         self.check_remote_connectivity(ssh_client,
             dest_server['port']['fixed_ips'][0]['ip_address'],
             servers=[src_server, dest_server])
-        if self.dest_has_fip:
+        if dest_has_fip:
             self.check_remote_connectivity(ssh_client,
                 dest_server['fip']['floating_ip_address'],
                 servers=[src_server, dest_server])
 
 
+@ddt.ddt
 class FloatingIpSameNetwork(FloatingIpTestCasesMixin,
                             base.BaseTempestTestCase):
-    scenarios = multiply_scenarios([
-        ('SRC with FIP', dict(src_has_fip=True)),
-        ('SRC without FIP', dict(src_has_fip=False)),
-    ], [
-        ('DEST with FIP', dict(dest_has_fip=True)),
-        ('DEST without FIP', dict(dest_has_fip=False)),
-    ])
 
     same_network = True
 
-    @test.unstable_test("bug 1717302")
     @decorators.idempotent_id('05c4e3b3-7319-4052-90ad-e8916436c23b')
-    def test_east_west(self):
-        self._test_east_west()
+    @ddt.unpack
+    @ddt.data({'src_has_fip': True, 'dest_has_fip': True},
+              {'src_has_fip': True, 'dest_has_fip': False},
+              {'src_has_fip': False, 'dest_has_fip': True},
+              {'src_has_fip': True, 'dest_has_fip': False})
+    def test_east_west(self, src_has_fip, dest_has_fip):
+        self._test_east_west(src_has_fip=src_has_fip,
+                             dest_has_fip=dest_has_fip)
 
 
+@ddt.ddt
 class FloatingIpSeparateNetwork(FloatingIpTestCasesMixin,
                                 base.BaseTempestTestCase):
-    scenarios = multiply_scenarios([
-        ('SRC with FIP', dict(src_has_fip=True)),
-        ('SRC without FIP', dict(src_has_fip=False)),
-    ], [
-        ('DEST with FIP', dict(dest_has_fip=True)),
-        ('DEST without FIP', dict(dest_has_fip=False)),
-    ])
 
     same_network = False
 
-    @test.unstable_test("bug 1717302")
     @decorators.idempotent_id('f18f0090-3289-4783-b956-a0f8ac511e8b')
-    def test_east_west(self):
-        self._test_east_west()
+    @ddt.unpack
+    @ddt.data({'src_has_fip': True, 'dest_has_fip': True},
+              {'src_has_fip': True, 'dest_has_fip': False},
+              {'src_has_fip': False, 'dest_has_fip': True},
+              {'src_has_fip': True, 'dest_has_fip': False})
+    def test_east_west(self, src_has_fip, dest_has_fip):
+        self._test_east_west(src_has_fip=src_has_fip,
+                             dest_has_fip=dest_has_fip)
 
 
 class DefaultSnatToExternal(FloatingIpTestCasesMixin,
@@ -208,6 +201,64 @@ class DefaultSnatToExternal(FloatingIpTestCasesMixin,
                                        gateway_external_ip,
                                        servers=[proxy, src_server])
 
+    def _test_nested_snat_external_ip(self, feature_enabled_bool):
+        """Check connectivity to an external IP from a nested network."""
+        gateway_external_ip = self._get_external_gateway()
+
+        if not gateway_external_ip:
+            raise self.skipTest("IPv4 gateway is not configured for public "
+                                "network or public_network_id is not "
+                                "configured")
+        proxy = self._create_server()
+        proxy_client = ssh.Client(proxy['fip']['floating_ip_address'],
+                                  CONF.validation.image_ssh_user,
+                                  pkey=self.keypair['private_key'])
+
+        # Create a nested router
+        router = self.create_router(
+            router_name=data_utils.rand_name('router'),
+            admin_state_up=True)
+
+        # Attach outer subnet to it
+        outer_port = self.create_port(self.network)
+        self.client.add_router_interface_with_port_id(router['id'],
+                                                      outer_port['id'])
+
+        # Attach a nested subnet to it
+        network = self.create_network()
+        subnet = self.create_subnet(network)
+        self.create_router_interface(router['id'], subnet['id'])
+
+        # Set up static routes in both directions
+        self.client.update_extra_routes(
+            self.router['id'],
+            outer_port['fixed_ips'][0]['ip_address'], subnet['cidr'])
+        self.client.update_extra_routes(
+            router['id'], self.subnet['gateway_ip'], '0.0.0.0/0')
+
+        # Create a server inside the nested network
+        src_server = self._create_server(create_floating_ip=False,
+                                         network=network)
+
+        # Check connectivity if nested SNAT is enabled, else no connectivity
+        src_server_ip = src_server['port']['fixed_ips'][0]['ip_address']
+        ssh_client = ssh.Client(src_server_ip,
+                                CONF.validation.image_ssh_user,
+                                pkey=self.keypair['private_key'],
+                                proxy_client=proxy_client)
+        self.check_remote_connectivity(ssh_client,
+                                       gateway_external_ip,
+                                       should_succeed=feature_enabled_bool,
+                                       servers=[proxy, src_server])
+
+    @decorators.idempotent_id('b911b124-b6cb-449d-83d9-b34f3665741d')
+    @utils.requires_ext(extension='extraroute', service='network')
+    def test_nested_snat_external_ip(self):
+        feature_enabled_bool = (
+            CONF.neutron_plugin_options.snat_rules_apply_to_nested_networks
+        )
+        self._test_nested_snat_external_ip(feature_enabled_bool)
+
 
 class FloatingIPPortDetailsTest(FloatingIpTestCasesMixin,
                                 base.BaseTempestTestCase):
@@ -217,7 +268,7 @@ class FloatingIPPortDetailsTest(FloatingIpTestCasesMixin,
     @utils.requires_ext(extension="router", service="network")
     @utils.requires_ext(extension="fip-port-details", service="network")
     def resource_setup(cls):
-        super(FloatingIPPortDetailsTest, cls).resource_setup()
+        super().resource_setup()
 
     @decorators.idempotent_id('a663aeee-dd81-492b-a207-354fd6284dbe')
     def test_floatingip_port_details(self):
@@ -243,9 +294,13 @@ class FloatingIPPortDetailsTest(FloatingIpTestCasesMixin,
                 self.os_primary.interfaces_client, server['server']['id'],
                 port['id'], lib_constants.PORT_STATUS_ACTIVE)
             fip = self.client.show_floatingip(fip['id'])['floatingip']
+            server_data = self.os_admin.servers_client.show_server(
+                server['server']['id'])['server']
+            zone = 'compute:' + server_data['OS-EXT-AZ:availability_zone']
             self._check_port_details(
                 fip, port, status=lib_constants.PORT_STATUS_ACTIVE,
-                device_id=server['server']['id'], device_owner='compute:nova')
+                device_id=server['server']['id'],
+                device_owner=zone)
             LOG.debug('Port check for server %s and FIP %s finished, '
                       'lets detach port %s from server!',
                       server['server']['id'], fip['id'], port['id'])
@@ -348,11 +403,11 @@ class FloatingIPQosTest(FloatingIpTestCasesMixin,
     @utils.requires_ext(extension="qos-fip", service="network")
     @base_api.require_qos_rule_type(qos_consts.RULE_TYPE_BANDWIDTH_LIMIT)
     def resource_setup(cls):
-        super(FloatingIPQosTest, cls).resource_setup()
+        super().resource_setup()
 
     @classmethod
     def setup_clients(cls):
-        super(FloatingIPQosTest, cls).setup_clients()
+        super().setup_clients()
         cls.admin_client = cls.os_admin.network_client
         cls.qos_bw_limit_rule_client = \
             cls.os_admin.qos_limit_bandwidth_rules_client
@@ -500,7 +555,7 @@ class FloatingIpMultipleRoutersTest(base.BaseTempestTestCase):
     @classmethod
     @utils.requires_ext(extension="router", service="network")
     def skip_checks(cls):
-        super(FloatingIpMultipleRoutersTest, cls).skip_checks()
+        super().skip_checks()
 
     def _create_keypair_and_secgroup(self):
         self.keypair = self.create_keypair()
@@ -607,7 +662,7 @@ class FloatingIpMultipleRoutersTest(base.BaseTempestTestCase):
                deleted just before the creation of the new IP to "reserve" the
                IP address associated (see LP#1880976).
             10. Create a FIP for the VM3 in the external network with
-               the same IP address that was used for VM2.
+                the same IP address that was used for VM2.
             11. Make sure that now VM1 is able to reach VM3 using the FIP.
 
         Note, the scenario passes only in case corresponding

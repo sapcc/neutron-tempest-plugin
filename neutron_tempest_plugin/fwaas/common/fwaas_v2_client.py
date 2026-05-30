@@ -32,7 +32,7 @@ class FWaaSClientMixin(object):
 
     @classmethod
     def resource_setup(cls):
-        super(FWaaSClientMixin, cls).resource_setup()
+        super().resource_setup()
         manager = cls.os_primary
         cls.firewall_groups_client = v2_client.FirewallGroupsClient(
             manager.auth_provider,

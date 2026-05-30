@@ -35,7 +35,7 @@ class NetworkMtuBaseTest(base.BaseTempestTestCase):
 
     @classmethod
     def resource_setup(cls):
-        super(NetworkMtuBaseTest, cls).resource_setup()
+        super().resource_setup()
         # setup basic topology for servers we can log into it
         cls.router = cls.create_router_by_client()
         cls.keypair = cls.create_keypair()
@@ -87,7 +87,7 @@ class NetworkMtuTest(NetworkMtuBaseTest):
 
     @classmethod
     def skip_checks(cls):
-        super(NetworkMtuTest, cls).skip_checks()
+        super().skip_checks()
         if ("vxlan" not in
                 config.CONF.neutron_plugin_options.available_type_drivers or
             "gre" not in
@@ -97,7 +97,7 @@ class NetworkMtuTest(NetworkMtuBaseTest):
     @classmethod
     @utils.requires_ext(extension=provider_net.ALIAS, service="network")
     def resource_setup(cls):
-        super(NetworkMtuTest, cls).resource_setup()
+        super().resource_setup()
 
     def _create_setup(self):
         self.admin_client = self.os_admin.network_client
@@ -171,7 +171,7 @@ class NetworkWritableMtuTest(NetworkMtuBaseTest):
 
     @classmethod
     def skip_checks(cls):
-        super(NetworkWritableMtuTest, cls).skip_checks()
+        super().skip_checks()
         supported_type_drivers = ['vxlan', 'geneve']
         if not any(type_driver in supported_type_drivers for type_driver in
                    config.CONF.neutron_plugin_options.available_type_drivers):
@@ -181,7 +181,7 @@ class NetworkWritableMtuTest(NetworkMtuBaseTest):
     @classmethod
     @utils.requires_ext(extension="net-mtu-writable", service="network")
     def resource_setup(cls):
-        super(NetworkWritableMtuTest, cls).resource_setup()
+        super().resource_setup()
 
     def _create_setup(self):
         self.admin_client = self.os_admin.network_client

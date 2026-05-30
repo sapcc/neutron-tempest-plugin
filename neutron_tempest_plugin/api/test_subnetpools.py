@@ -29,7 +29,7 @@ class SubnetPoolsTestBase(base.BaseAdminNetworkTest):
 
     @classmethod
     def resource_setup(cls):
-        super(SubnetPoolsTestBase, cls).resource_setup()
+        super().resource_setup()
         min_prefixlen = '29'
         prefixes = [u'10.11.12.0/24']
         cls._subnetpool_data = {'prefixes': prefixes,
@@ -348,7 +348,7 @@ class SubnetPoolsTestV6(SubnetPoolsTest):
 
     @classmethod
     def resource_setup(cls):
-        super(SubnetPoolsTestV6, cls).resource_setup()
+        super().resource_setup()
         min_prefixlen = '64'
         prefixes = [u'2001:db8:3::/48']
         cls._subnetpool_data = {'min_prefixlen': min_prefixlen,
@@ -377,7 +377,7 @@ class SubnetPoolsSearchCriteriaTest(base.BaseSearchCriteriaTest,
 
     @classmethod
     def resource_setup(cls):
-        super(SubnetPoolsSearchCriteriaTest, cls).resource_setup()
+        super().resource_setup()
         for name in cls.resource_names:
             cls._create_subnetpool(name=name)
 
@@ -432,7 +432,7 @@ class RbacSubnetPoolTest(SubnetPoolsTestBase):
 
     @classmethod
     def resource_setup(cls):
-        super(RbacSubnetPoolTest, cls).resource_setup()
+        super().resource_setup()
         cls.client2 = cls.os_alt.network_client
 
     def _make_admin_snp_shared_to_project_id(self, project_id):

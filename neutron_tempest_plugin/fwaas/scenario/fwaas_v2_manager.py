@@ -33,7 +33,7 @@ class ScenarioTest(manager.NetworkScenarioTest):
 
     @classmethod
     def skip_checks(cls):
-        super(ScenarioTest, cls).skip_checks()
+        super().skip_checks()
         msg = None
         if not CONF.fwaas.run_fwaas_tests:
             msg = ("Running of fwaas related tests is disabled in "
@@ -58,7 +58,7 @@ class NetworkScenarioTest(ScenarioTest):
 
     @classmethod
     def skip_checks(cls):
-        super(NetworkScenarioTest, cls).skip_checks()
+        super().skip_checks()
         if not CONF.service_available.neutron:
             raise cls.skipException('Neutron not available')
 

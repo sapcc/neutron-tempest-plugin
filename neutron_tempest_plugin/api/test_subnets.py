@@ -24,7 +24,7 @@ class SubnetsSearchCriteriaTest(base.BaseSearchCriteriaTest):
 
     @classmethod
     def resource_setup(cls):
-        super(SubnetsSearchCriteriaTest, cls).resource_setup()
+        super().resource_setup()
         net = cls.create_network(network_name='subnet-search-test-net')
         for name in cls.resource_names:
             cls.create_subnet(net, name=name)
@@ -78,7 +78,7 @@ class SubnetServiceTypeTestJSON(base.BaseNetworkTest):
 
     @classmethod
     def resource_setup(cls):
-        super(SubnetServiceTypeTestJSON, cls).resource_setup()
+        super().resource_setup()
         cls.network = cls.create_network()
 
     @decorators.idempotent_id('7e0edb66-1bb2-4473-ab83-d039cddced0d')

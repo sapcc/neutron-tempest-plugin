@@ -84,7 +84,7 @@ class TestBGPVPNBasic(base.BaseBgpvpnTest, manager.NetworkScenarioTest):
 
     @classmethod
     def setUpClass(cls):
-        super(TestBGPVPNBasic, cls).setUpClass()
+        super().setUpClass()
         cls._rt_index = 0
 
     @classmethod
@@ -94,7 +94,7 @@ class TestBGPVPNBasic(base.BaseBgpvpnTest, manager.NetworkScenarioTest):
         return "64512:%d" % cls._rt_index
 
     def setUp(self):
-        super(TestBGPVPNBasic, self).setUp()
+        super().setUp()
         self.servers_keypairs = {}
         self.servers = []
         self.server_fixed_ips = {}
