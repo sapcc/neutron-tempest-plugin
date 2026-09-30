@@ -51,6 +51,10 @@ class TestAutoAllocatedTopology(base.BaseAdminNetworkTest):
 
         # Ensure the public external network is the default external network
         public_net_id = cfg.CONF.network.public_network_id
+        description = cls.admin_client.show_network(
+            public_net_id)['network']['description']
+        cls.addClassResourceCleanup(cls.admin_client.update_network,
+                                    public_net_id, description=description)
         cls.admin_client.update_network(public_net_id, is_default=True)
         # Ensure that is_default does not accidentally flip back to False
         # because of network_update requests that do not contain is_default.

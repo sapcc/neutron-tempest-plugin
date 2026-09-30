@@ -12,6 +12,7 @@
 
 from oslo_config import cfg
 from tempest.lib.common.utils import data_utils
+from tempest.lib.common.utils import test_utils
 from tempest.lib import decorators
 from tempest.lib import exceptions as lib_exc
 import testtools
@@ -217,6 +218,8 @@ class ExternalNetworksRBACTestJSON(base.BaseAdminNetworkTest):
         r = self.client2.create_router(
             data_utils.rand_name('router'),
             external_gateway_info={'network_id': net['id']})['router']
+        self.addCleanup(test_utils.call_and_ignore_notfound_exc,
+                        self.admin_client.delete_router, r['id'])
         # delete should fail because the wildcard is required for the tenant's
         # access
         with testtools.ExpectedException(lib_exc.Conflict):

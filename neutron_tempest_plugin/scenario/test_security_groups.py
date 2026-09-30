@@ -72,6 +72,11 @@ class BaseNetworkSecGroupTest(base.BaseTempestTestCase):
     @classmethod
     def resource_setup(cls):
         super().resource_setup()
+        quotas = cls.network_client.show_quotas(cls.project_id)['quota']
+        cls.addClassResourceCleanup(
+            cls.network_client.update_quotas, cls.project_id,
+            security_group=quotas['security_group'],
+            security_group_rule=quotas['security_group_rule'])
         # setup basic topology for servers we can log into it
         cls.reserve_external_subnet_cidrs()
         cls.network = cls.create_network()
@@ -89,8 +94,6 @@ class BaseNetworkSecGroupTest(base.BaseTempestTestCase):
 
     def setUp(self):
         super().setUp()
-        self.addCleanup(test_utils.call_and_ignore_notfound_exc,
-                        self.network_client.reset_quotas, self.project_id)
         self.network_client.update_quotas(self.project_id, security_group=-1)
         self.network_client.update_quotas(self.project_id,
                                           security_group_rule=-1)
@@ -278,16 +281,24 @@ class BaseNetworkSecGroupTest(base.BaseTempestTestCase):
 
     def _test_default_sec_grp_scenarios(self):
         # Ensure that SG used in tests is stateful or stateless as required
-        default_sg_id = self._get_default_security_group()['id']
+        default_sg = self._get_default_security_group()
+        default_sg_id = default_sg['id']
         self.os_primary.network_client.update_security_group(
             default_sg_id, stateful=not self.stateless_sg)
+        if default_sg['stateful'] == self.stateless_sg:
+            self.addCleanup(
+                self.os_primary.network_client.update_security_group,
+                default_sg_id, stateful=default_sg['stateful'])
         if self.stateless_sg:
             self.create_ingress_metadata_secgroup_rule(
                 secgroup_id=default_sg_id)
         server_ssh_clients, fips, servers = self.create_vm_testing_sec_grp()
 
         # Check ssh connectivity when you add sec group rule, enabling ssh
-        self.create_loginable_secgroup_rule(default_sg_id)
+        ssh_rule = self.create_loginable_secgroup_rule(default_sg_id)
+        self.addCleanup(test_utils.call_and_ignore_notfound_exc,
+                        self.client.delete_security_group_rule,
+                        ssh_rule['id'])
         self.check_connectivity(fips[0]['floating_ip_address'],
                                 CONF.validation.image_ssh_user,
                                 self.keypair['private_key'])
@@ -306,7 +317,10 @@ class BaseNetworkSecGroupTest(base.BaseTempestTestCase):
         if self.stateless_sg:
             # NOTE(slaweq): in case of stateless SG explicit ingress rule for
             # the ICMP replies needs to be added too
-            self.create_pingable_secgroup_rule(default_sg_id)
+            icmp_rule = self.create_pingable_secgroup_rule(default_sg_id)
+            self.addCleanup(test_utils.call_and_ignore_notfound_exc,
+                            self.client.delete_security_group_rule,
+                            icmp_rule['id'])
         subnets = self.os_admin.network_client.list_subnets(
             network_id=CONF.network.public_network_id)['subnets']
         ext_net_ip = None

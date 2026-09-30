@@ -234,12 +234,14 @@ class BaseNetworkTest(test.BaseTestCase):
                                          port['id'])
             # Clean up subnets
             for subnet in cls.subnets:
-                cls._try_delete_resource(cls.admin_client.delete_subnet,
-                                         subnet['id'])
+                cls._try_delete_resource(
+                    (cls.admin_client or cls.client).delete_subnet,
+                    subnet['id'])
             # Clean up admin subnets
             for subnet in cls.admin_subnets:
-                cls._try_delete_resource(cls.admin_client.delete_subnet,
-                                         subnet['id'])
+                cls._try_delete_resource(
+                    (cls.admin_client or cls.client).delete_subnet,
+                    subnet['id'])
             # Clean up networks
             for network in cls.networks:
                 cls._try_delete_resource(
@@ -263,6 +265,20 @@ class BaseNetworkTest(test.BaseTestCase):
                 cls._try_delete_resource(cls.delete_security_group,
                                          security_group,
                                          client=cls.admin_client)
+
+            for sg_rule_template in cls.sg_rule_templates:
+                cls._try_delete_resource(
+                    cls.admin_client.delete_default_security_group_rule,
+                    sg_rule_template['id'])
+
+            for address_group in cls.address_groups:
+                cls._try_delete_resource(cls.client.delete_address_group,
+                                         address_group['id'])
+
+            for address_group in cls.admin_address_groups:
+                cls._try_delete_resource(
+                    cls.admin_client.delete_address_group,
+                    address_group['id'])
 
             for subnetpool in cls.subnetpools:
                 cls._try_delete_resource(cls.admin_client.delete_subnetpool,
@@ -335,6 +351,9 @@ class BaseNetworkTest(test.BaseTestCase):
         except lib_exc.Forbidden:
             LOG.warning("Forbidden when deleting resource, args=%s kwargs=%s",
                         args, kwargs)
+        except Exception as e:
+            LOG.warning("Failed to delete resource, args=%s kwargs=%s: %s",
+                        args, kwargs, e)
 
     @classmethod
     def create_network(cls, network_name=None, client=None, external=None,

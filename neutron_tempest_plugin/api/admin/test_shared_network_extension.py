@@ -17,6 +17,7 @@
 from oslo_utils import uuidutils
 from tempest.common import utils
 from tempest.lib.common.utils import data_utils
+from tempest.lib.common.utils import test_utils
 from tempest.lib import decorators
 from tempest.lib import exceptions as lib_exc
 import testtools
@@ -285,6 +286,8 @@ class RBACSharedNetworksTest(base.BaseAdminNetworkTest):
         res = self._make_admin_net_and_subnet_shared_to_project_id(
             self.client.tenant_id)
         port = self.create_port(res['network'])
+        self.addCleanup(test_utils.call_and_ignore_notfound_exc,
+                        self.client.delete_port, port['id'])
         # a port on the network should prevent the deletion of a policy
         # required for it to exist
         with testtools.ExpectedException(lib_exc.Conflict):
@@ -312,6 +315,8 @@ class RBACSharedNetworksTest(base.BaseAdminNetworkTest):
             object_type='network', object_id=net['id'],
             action='access_as_shared', target_tenant=self.client2.tenant_id)
         port = self.client2.create_port(network_id=net['id'])['port']
+        self.addCleanup(test_utils.call_and_ignore_notfound_exc,
+                        self.client2.delete_port, port['id'])
         self.client.delete_port(port['id'])
 
     @decorators.idempotent_id('f7539232-389a-4e9c-9e37-e42a129eb541')

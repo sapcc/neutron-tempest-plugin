@@ -408,8 +408,7 @@ class SecGroupRulesQuotaTest(BaseSecGroupRulesQuota):
 
     def setUp(self):
         super().setUp()
-        self.addCleanup(test_utils.call_and_ignore_notfound_exc,
-                        self.admin_client.reset_quotas, self.client.project_id)
+        self.addCleanup(self._set_sg_rules_quota, self._get_sg_rules_quota())
         self._set_sg_rules_quota(10)
 
     @decorators.idempotent_id('77ec038c-5638-11ea-8e2d-0242ac130003')
@@ -624,6 +623,8 @@ class RbacSharedSecurityGroupTest(base.BaseAdminNetworkTest):
         port = self.client2.create_port(
             network_id=net['id'],
             security_groups=[sg_id])['port']
+        self.addCleanup(test_utils.call_and_ignore_notfound_exc,
+                        self.client2.delete_port, port['id'])
 
         # a port with shared sg should prevent the deletion of an
         # rbac-policy required for it to be shared

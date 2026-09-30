@@ -73,13 +73,13 @@ class TestFlavorsJson(base.BaseAdminNetworkTest):
         body = self.admin_client.create_service_profile(
             description=description, driver=driver, metainfo=metainfo)
         service_profile = body['service_profile']
+        # Deletes a service profile
+        self.addCleanup(self._delete_service_profile,
+                        service_profile['id'])
         # Updates a service profile
         self.admin_client.update_service_profile(service_profile['id'],
                                                  enabled=False)
         self.assertTrue(service_profile['enabled'])
-        # Deletes a service profile
-        self.addCleanup(self._delete_service_profile,
-                        service_profile['id'])
         # Assert whether created service profiles are found in service profile
         # lists or fail if created service profiles are not found in service
         # profiles list
@@ -96,11 +96,11 @@ class TestFlavorsJson(base.BaseAdminNetworkTest):
         body = self.admin_client.create_flavor(name=name, service_type=service,
                                                description=description)
         flavor = body['flavor']
+        # Deletes a flavor
+        self.addCleanup(self._delete_flavor, flavor['id'])
         # Updates a flavor
         self.admin_client.update_flavor(flavor['id'], enabled=False)
         self.assertTrue(flavor['enabled'])
-        # Deletes a flavor
-        self.addCleanup(self._delete_flavor, flavor['id'])
         # Assert whether created flavors are found in flavor lists or fail
         # if created flavors are not found in flavors list
         labels = (self.admin_client.list_flavors(id=flavor['id']))
