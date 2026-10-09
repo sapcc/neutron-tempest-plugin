@@ -179,13 +179,13 @@ class ExternalNetworksRBACTestJSON(base.BaseAdminNetworkTest):
     @decorators.idempotent_id('01364c50-bfb6-46c4-b44c-edc4564d61cf')
     def test_policy_allows_tenant_to_allocate_floatingip(self):
         net = self._create_network(external=False)
+        self.create_subnet(net, client=self.admin_client, enable_dhcp=False)
         # share to the admin client so it gets converted to external but
         # not shared to everyone
         self.admin_client.create_rbac_policy(
             object_type='network', object_id=net['id'],
             action='access_as_external',
             target_tenant=self.admin_client.tenant_id)
-        self.create_subnet(net, client=self.admin_client, enable_dhcp=False)
         with testtools.ExpectedException(lib_exc.NotFound):
             self.create_floatingip(net['id'], client=self.client2)
         self.admin_client.create_rbac_policy(
