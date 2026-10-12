@@ -130,10 +130,11 @@ class BaseSecGroupTest(base.BaseAdminNetworkTest):
         body = self.client.create_bulk_security_groups(
             sec_nm, stateless=self.stateless_sg)
         created_sec_grps = body['security_groups']
-        self.assertEqual(2, len(created_sec_grps))
         for secgrp in created_sec_grps:
             self.addCleanup(self.client.delete_security_group,
                             secgrp['id'])
+        self.assertEqual(2, len(created_sec_grps))
+        for secgrp in created_sec_grps:
             self.assertIn(secgrp['name'], sec_nm)
             self.assertIsNotNone(secgrp['id'])
 

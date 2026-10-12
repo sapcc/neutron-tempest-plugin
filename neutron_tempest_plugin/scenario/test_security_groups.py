@@ -290,8 +290,11 @@ class BaseNetworkSecGroupTest(base.BaseTempestTestCase):
                 self.os_primary.network_client.update_security_group,
                 default_sg_id, stateful=default_sg['stateful'])
         if self.stateless_sg:
-            self.create_ingress_metadata_secgroup_rule(
+            metadata_rule = self.create_ingress_metadata_secgroup_rule(
                 secgroup_id=default_sg_id)
+            self.addCleanup(test_utils.call_and_ignore_notfound_exc,
+                            self.client.delete_security_group_rule,
+                            metadata_rule['id'])
         server_ssh_clients, fips, servers = self.create_vm_testing_sec_grp()
 
         # Check ssh connectivity when you add sec group rule, enabling ssh

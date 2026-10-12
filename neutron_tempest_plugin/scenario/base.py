@@ -201,6 +201,15 @@ class BaseTempestTestCase(base_api.BaseNetworkTest):
             direction=neutron_lib_constants.INGRESS_DIRECTION)
 
     @classmethod
+    def create_ingress_metadata_secgroup_rule(cls, secgroup_id=None):
+        return cls.create_security_group_rule(
+            security_group_id=secgroup_id,
+            direction=neutron_lib_constants.INGRESS_DIRECTION,
+            protocol=neutron_lib_constants.PROTO_NAME_TCP,
+            remote_ip_prefix='169.254.169.254/32',
+            description='metadata out')
+
+    @classmethod
     def create_router_by_client(cls, is_admin=False, **kwargs):
         kwargs.update({'router_name': data_utils.rand_name('router'),
                        'admin_state_up': True,

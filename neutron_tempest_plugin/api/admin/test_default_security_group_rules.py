@@ -189,7 +189,7 @@ class DefaultSecurityGroupRuleTest(base.BaseAdminNetworkTest):
         new_rule_args['used_in_non_default_sg'] = False
         self.assertRaises(
             lib_exc.Conflict,
-            self.admin_client.create_default_security_group_rule,
+            self.create_default_security_group_rule,
             **new_rule_args)
 
         # Same in the opposite way: even if 'used_in_default_sg' will be
@@ -199,7 +199,7 @@ class DefaultSecurityGroupRuleTest(base.BaseAdminNetworkTest):
         new_rule_args['used_in_default_sg'] = False
         self.assertRaises(
             lib_exc.Conflict,
-            self.admin_client.create_default_security_group_rule,
+            self.create_default_security_group_rule,
             **new_rule_args)
 
     @decorators.idempotent_id('e4696607-1a13-48eb-8912-ee1e742d9471')
