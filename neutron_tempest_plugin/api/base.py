@@ -1048,10 +1048,11 @@ class BaseNetworkTest(test.BaseTestCase):
                 raise ValueError('Security group ID specified multiple times.')
 
         ip_version = ip_version or cls._ip_version
-        default_params = (
+        default_params = dict(
             constants.DEFAULT_SECURITY_GROUP_RULE_PARAMS[ip_version])
-        if ('remote_address_group_id' in kwargs and 'remote_ip_prefix' in
-                default_params):
+        if (('remote_address_group_id' in kwargs or
+             'remote_group_id' in kwargs) and
+                'remote_ip_prefix' in default_params):
             default_params.pop('remote_ip_prefix')
         for key, value in default_params.items():
             kwargs.setdefault(key, value)
