@@ -34,10 +34,10 @@ class RoutersTestDVRBase(base.BaseRouterTest):
         super().resource_setup()
         name = data_utils.rand_name('pretest-check')
         router = cls.admin_client.create_router(name)
+        cls.admin_client.delete_router(router['router']['id'])
         if 'distributed' not in router['router']:
             msg = "'distributed' attribute not found. DVR Possibly not enabled"
             raise cls.skipException(msg)
-        cls.admin_client.delete_router(router['router']['id'])
 
 
 class RoutersTestDVR(RoutersTestDVRBase):

@@ -139,8 +139,6 @@ class QoSTestMixin(object):
                                         description='test-qos-policy',
                                         shared=True)
         self.qos_policies.append(policy['policy'])
-        self.addCleanup(test_utils.call_and_ignore_notfound_exc,
-            self.os_admin.network_client.delete_qos_policy, policy)
         return policy['policy']['id']
 
     def _create_qos_bw_limit_rule(self, policy_id, rule_data):
@@ -346,10 +344,10 @@ class QoSTest(QoSTestMixin, base.BaseTempestTestCase):
 
         vm, vm_port = self._create_server_by_port()
 
-        port_policy = self.os_admin.network_client.create_qos_policy(
+        port_policy = self.create_qos_policy(
             name='port-policy',
             description='policy for attach',
-            shared=False)['policy']
+            shared=False)
 
         rule_data = {
             'max_kbps': constants.LIMIT_KILO_BITS_PER_SECOND,
@@ -390,9 +388,9 @@ class QoSTest(QoSTestMixin, base.BaseTempestTestCase):
     def test_create_instance_using_network_with_existing_policy(self):
         network = self.create_network()
 
-        qos_policy = self.os_admin.network_client.create_qos_policy(
+        qos_policy = self.create_qos_policy(
             name='network-policy',
-            shared=False)['policy']
+            shared=False)
 
         rule_data = {
             'max_kbps': constants.LIMIT_KILO_BITS_PER_SECOND,

@@ -16,7 +16,6 @@
 from neutron_lib import constants
 from neutron_lib.db import constants as db_const
 from tempest.lib.common.utils import data_utils
-from tempest.lib.common.utils import test_utils
 from tempest.lib import decorators
 from tempest.lib import exceptions as lib_exc
 
@@ -181,8 +180,7 @@ class NegativeSecGroupRulesQuotaTest(
 
     def setUp(self):
         super().setUp()
-        self.addCleanup(test_utils.call_and_ignore_notfound_exc,
-                        self.admin_client.reset_quotas, self.client.project_id)
+        self.addCleanup(self._set_sg_rules_quota, self._get_sg_rules_quota())
         self._set_sg_rules_quota(10)
 
     @decorators.idempotent_id('8336e6ea-2e0a-4a1a-8673-a6f81b577d57')

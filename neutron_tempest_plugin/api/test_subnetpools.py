@@ -486,10 +486,10 @@ class RbacSubnetPoolTest(SubnetPoolsTestBase):
     @utils.requires_ext(extension='rbac-address-scope', service='network')
     def test_cannot_share_if_no_access_to_address_scope(self):
         # Create Address Scope shared only to client but not to client2
-        a_s = self.admin_client.create_address_scope(
+        a_s = self.create_address_scope(
             name=data_utils.rand_name("rbac-subnetpool"),
-            ip_version=4
-        )["address_scope"]
+            is_admin=True,
+            ip_version=4)
         rbac_policy = self.admin_client.create_rbac_policy(
             object_type='address_scope', object_id=a_s['id'],
             action='access_as_shared',

@@ -386,6 +386,7 @@ class NetworkClientJSON(service_client.RestClient):
             # merged, a test case for this will need to be added similar to
             # the SNAT case.
             cur_gw_info.pop('external_fixed_ips', None)
+            cur_gw_info.pop('external_port_id', None)
             if not set_enable_snat:
                 cur_gw_info.pop('enable_snat', None)
         update_body['external_gateway_info'] = kwargs.get(

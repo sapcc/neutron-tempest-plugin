@@ -193,8 +193,7 @@ class QosTestJSON(base.BaseAdminNetworkTest):
 
     @decorators.idempotent_id('1cb42653-54bd-4a9a-b888-c55e18199201')
     def test_delete_policy(self):
-        policy = self.admin_client.create_qos_policy(
-            'test-policy', 'desc', True)['policy']
+        policy = self.create_qos_policy('test-policy', 'desc', True)
 
         retrieved_policy = self.admin_client.show_qos_policy(policy['id'])
         retrieved_policy = retrieved_policy['policy']
@@ -818,6 +817,8 @@ class RbacSharedQosPoliciesTest(base.BaseAdminNetworkTest):
         # update shared True -> False should fail because the policy is bound
         # to a network
         net = self._create_network(qos_pol['id'], self.admin_client, False)
+        self.addCleanup(test_utils.call_and_ignore_notfound_exc,
+                        self.admin_client.delete_network, net['id'])
         with testtools.ExpectedException(exceptions.Conflict):
             self.admin_client.update_qos_policy(qos_pol['id'], shared=False)
 
