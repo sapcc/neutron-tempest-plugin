@@ -73,6 +73,13 @@ NeutronPluginOptions = [
                choices=['None', 'openvswitch', 'ovn',
                         'iptables_hybrid', 'iptables'],
                help='Driver for security groups firewall in the L2 agent'),
+    cfg.DictOpt('dns_zone_attributes',
+                default={},
+                help='Attributes of the zones that the DNS integration '
+                     'tests create, for example "label:My Pool". The '
+                     'Designate scheduler chooses the pool of a zone by '
+                     'its attributes. If empty, designate-tempest-plugin '
+                     'sets a random attribute.'),
 
     # Multicast tests settings
     cfg.StrOpt('multicast_group_range',

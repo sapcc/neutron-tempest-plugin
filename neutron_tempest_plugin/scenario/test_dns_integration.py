@@ -73,7 +73,9 @@ class BaseDNSIntegrationTests(base.BaseTempestTestCase, DNSMixin):
         cls.zone_name = dns_data_utils.rand_zone_name(
             name="basednsintegrationtests")
         cls.zone = cls.zone_client.create_zone(
-            name=cls.zone_name, wait_until='ACTIVE')[1]
+            name=cls.zone_name,
+            attributes=CONF.neutron_plugin_options.dns_zone_attributes,
+            wait_until='ACTIVE')[1]
         cls.addClassResourceCleanup(
             cls.zone_client.delete_zone, cls.zone['id'],
             ignore_errors=lib_exc.NotFound)
@@ -296,14 +298,16 @@ class DNSIntegrationDomainPerProjectTests(BaseDNSIntegrationTests):
 
     @classmethod
     def resource_setup(cls):
-        super().resource_setup()
+        super(BaseDNSIntegrationTests, cls).resource_setup()
         cls.name = data_utils.rand_name('test-domain')
         cls.zone_name = "%s.%s.%s.zone." % (cls.client.user_id,
                                             cls.client.project_id,
                                             cls.name)
         dns_domain_template = "<user_id>.<project_id>.%s.zone." % cls.name
         cls.zone = cls.zone_client.create_zone(
-            name=cls.zone_name, wait_until='ACTIVE')[1]
+            name=cls.zone_name,
+            attributes=CONF.neutron_plugin_options.dns_zone_attributes,
+            wait_until='ACTIVE')[1]
         cls.addClassResourceCleanup(cls.zone_client.delete_zone,
             cls.zone['id'], ignore_errors=lib_exc.NotFound)
         cls.network = cls.create_network(dns_domain=dns_domain_template)
