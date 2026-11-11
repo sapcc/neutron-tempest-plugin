@@ -1,0 +1,12 @@
+---
+fixes:
+  - |
+    Fixed resource cleanup so that test resources are reliably removed.
+    ``resource_cleanup`` no longer aborts on the first failing deletion,
+    which used to leak every resource scheduled after it. Cleanup of
+    subnets, subnet pools and address scopes no longer goes through
+    ``admin_client``, which is ``None`` on tests that do not request admin
+    credentials and made cleanup fail with ``AttributeError``. Address
+    groups and default security group rule templates are now deleted as
+    well. Resources remember the client that created them so they are
+    removed with the right credentials.
