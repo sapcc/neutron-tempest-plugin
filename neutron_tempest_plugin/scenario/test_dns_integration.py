@@ -161,6 +161,10 @@ class BaseDNSIntegrationTests(base.BaseTempestTestCase, DNSMixin):
                     'Failed, recordset type:{} and ID:{} is still exist in '
                     'the Designate DNS DB'.format(record_type, rec_id))
 
+    def _dns_answers_contain(self, name, rec_type, text):
+        return all(r.answer and all(text in rr.to_text() for rr in r.answer)
+                   for r in self.query_client.query(name, rec_type))
+
     def _verify_dns_records(self, address, name, found=True, record_type='A'):
         client = self.query_client
         forward = name + '.' + self.zone['name']
@@ -179,6 +183,14 @@ class BaseDNSIntegrationTests(base.BaseTempestTestCase, DNSMixin):
                 self._verify_designate_recordset(address, found, rec_type)
         if not found:
             return
+        test_utils.call_until_true(
+            func=self._dns_answers_contain, name=forward,
+            rec_type=record_type, text=address,
+            duration=client.build_timeout, sleep_for=client.build_interval)
+        test_utils.call_until_true(
+            func=self._dns_answers_contain, name=reverse, rec_type='PTR',
+            text=forward, duration=client.build_timeout,
+            sleep_for=client.build_interval)
         fwd_response = client.query(forward, record_type)
         rev_response = client.query(reverse, 'PTR')
         for r in fwd_response:
